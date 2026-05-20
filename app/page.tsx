@@ -238,7 +238,7 @@ export default function FourmenEventsHome() {
                   alt="Fourmen Events Logo"
                   fill
                   priority
-                  className="object-contain object-left scale-[1.5] brightness-0 invert md:scale-[1.8]"
+                  className="object-contain object-left scale-[1] brightness-0 invert md:scale-[1.2]"
                 />
               </div>
             </div>
