@@ -19,10 +19,12 @@ export function envAdminEmails() {
 }
 
 /** Role is decided from the whitelists on every request, so adding or removing an
- *  admin / photographer email takes effect on their next page load, even if they signed up earlier. */
-async function resolveRole(email: string): Promise<Role> {
+ *  admin / photographer email takes effect on their next page load, even if they signed up earlier.
+ *  Only a verified email can unlock a role: otherwise anyone could sign up with the admin's address
+ *  (e.g. if "Confirm email" is ever turned off in Supabase) and get the admin panel. */
+async function resolveRole(email: string, verified: boolean): Promise<Role> {
   const e = email.trim().toLowerCase();
-  if (!e) return "client";
+  if (!e || !verified) return "client";
   if (envAdminEmails().includes(e)) return "admin";
   const d = db();
   const [{ data: admins }, { data: ph }] = await Promise.all([
@@ -43,7 +45,7 @@ export const getUser = cache(async (): Promise<SessionUser | null> => {
   const d = db();
   const [{ data: p }, role] = await Promise.all([
     d.from("profiles").select("*").eq("id", data.user.id).maybeSingle(),
-    resolveRole(email),
+    resolveRole(email, !!data.user.email_confirmed_at),
   ]);
   const name: string = p?.full_name || meta.full_name || meta.name || "";
   const phone: string | null = p?.phone || meta.phone || null;

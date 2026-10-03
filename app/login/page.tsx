@@ -2,13 +2,14 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import LoginForm, { type AuthMode } from "@/components/LoginForm";
 import { getUser, homeFor } from "@/lib/auth";
+import { safeNext } from "@/lib/safe-next";
 import { eyebrow, h2 } from "@/lib/ui";
 
 export const metadata: Metadata = { title: "Sign in or create an account" };
 
 export default async function Login({ searchParams }: { searchParams: Promise<{ next?: string; mode?: string; error?: string }> }) {
   const { next, mode, error } = await searchParams;
-  const safe = next && next.startsWith("/") && !next.startsWith("//") ? next : "";
+  const safe = safeNext(next);
   const user = await getUser();
   if (user) redirect(safe || homeFor(user.role));
   const m: AuthMode = mode === "signup" || mode === "forgot" ? mode : "signin";

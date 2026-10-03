@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { getUser, homeFor } from "@/lib/auth";
+import { safeNext } from "@/lib/safe-next";
 
 /** Lands Google sign-ins, sign-up confirmation links and password reset links. */
 export async function GET(request: NextRequest) {
@@ -9,8 +10,7 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type") as EmailOtpType | null;
-  const next = searchParams.get("next") ?? "";
-  const safe = next.startsWith("/") && !next.startsWith("//") ? next : "";
+  const safe = safeNext(searchParams.get("next"));
   // "expired": link too old or already used. "browser": a ?code= link opened in a different browser than the one that asked for it.
   const fail = (why: "expired" | "browser" = "expired") =>
     NextResponse.redirect(`${origin}/login?error=${why}${type === "recovery" ? "&mode=forgot" : ""}${safe ? `&next=${encodeURIComponent(safe)}` : ""}`);

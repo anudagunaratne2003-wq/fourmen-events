@@ -21,6 +21,9 @@ export async function createBooking(i: BookingInput): Promise<{ id?: string; err
   if (!i.proofPath || !i.proofPath.startsWith(user.id + "/")) return { error: "Upload your advance payment proof." };
 
   const d = db();
+  // Stops one account from holding many slots with unchecked receipts while real students wait.
+  const { count: waiting } = await d.from("bookings").select("id", { count: "exact", head: true }).eq("client_id", user.id).eq("advance_status", "pending");
+  if ((waiting ?? 0) >= 2) return { error: "You already have 2 bookings waiting for payment approval. Please wait until we confirm them, or contact Fourmen Events." };
   const { data: ev } = await d.from("events").select("*").eq("id", i.eventId).single();
   if (!ev || ev.status !== "open") return { error: "Bookings for this event are closed." };
   const { data: pkg } = await d.from("packages").select("*").eq("id", i.packageId).eq("photographer_id", i.photographerId).eq("active", true).single();

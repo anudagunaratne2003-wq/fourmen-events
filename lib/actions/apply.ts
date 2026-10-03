@@ -19,6 +19,10 @@ export async function submitApplication(_prev: ApplyState, fd: FormData): Promis
   if (portfolio && !/^https?:\/\/\S+\.\S+/i.test(portfolio)) return { error: "The portfolio link should start with http:// or https://" };
 
   const d = db();
+  // Flood guard: a burst of applications in one hour is almost certainly a bot.
+  const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { count: recent } = await d.from("photographer_applications").select("id", { count: "exact", head: true }).gte("created_at", since);
+  if ((recent ?? 0) >= 30) return { error: "We are receiving a lot of applications right now. Please try again in an hour." };
   const [{ data: existing }, { data: pending }] = await Promise.all([
     d.from("photographers").select("id").eq("email", email).maybeSingle(),
     d.from("photographer_applications").select("id").eq("email", email).eq("status", "pending").maybeSingle(),
