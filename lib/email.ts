@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/lib/supabase/admin";
-import { firstName, fullyPaid } from "@/lib/format";
+import { firstName, fullyPaid, fmtDate, fmtTime, lkr } from "@/lib/format";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/+$/, "");
@@ -56,4 +56,47 @@ export async function notifyPhotosReady(bookingId: string) {
   const ok = await sendEmail(b.client_email, `Your photos are ready (${b.ref})`, html, text);
   // Not sent? Release the claim so the next trigger (payment approval, link saved, admin "Send now") tries again.
   if (!ok) await d.from("bookings").update({ photos_ready_emailed_at: null }).eq("id", bookingId);
+}
+
+/** Tells the photographer a client's advance was approved, so the time slot is confirmed and paid.
+ *  Called once, when an admin approves the advance. Returns whether the email went out. */
+export async function notifyPhotographerBooked(bookingId: string) {
+  const d = db();
+  const { data: b } = await d.from("bookings")
+    .select("id, ref, client_name, degree, notes, package_name, package_price, advance_lkr, events(id, name, university, venue), slots(slot_date, start_time, end_time), photographers(email, display_name)")
+    .eq("id", bookingId).maybeSingle();
+  const ph = b?.photographers as unknown as { email: string; display_name: string } | null;
+  if (!b || !ph?.email) return false;
+  const ev = b.events as unknown as { id: string; name: string; university: string; venue: string | null } | null;
+  const slot = b.slots as unknown as { slot_date: string; start_time: string; end_time: string } | null;
+
+  const when = slot ? `${fmtDate(slot.slot_date)}, ${fmtTime(slot.start_time)} – ${fmtTime(slot.end_time)}` : "Time to be confirmed";
+  const client = firstName(b.client_name) || "A client"; // photographers only ever see the client's first name
+  const link = `${siteUrl()}/photographer${ev ? `?event=${ev.id}` : ""}#bookings`;
+  const rows: [string, string][] = [
+    ["University", ev?.university ?? ""],
+    ["Event", ev?.name ?? ""],
+    ["Date and time", when],
+    ["Venue", ev?.venue ?? ""],
+    ["Client", client],
+    ["Degree", b.degree ?? ""],
+    ["Package", `${b.package_name} (${lkr(b.package_price)})`],
+    ["Notes from client", b.notes ?? ""],
+    ["Booking reference", b.ref],
+  ];
+  const shown = rows.filter(([, v]) => v);
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#1c120c;line-height:1.6">
+  <p style="font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:#9b5b2b">Fourmen Events · ${esc(b.ref)}</p>
+  <h1 style="font-weight:300;letter-spacing:.08em;text-transform:uppercase;font-size:22px">New confirmed booking</h1>
+  <p>Hi ${esc(firstName(ph.display_name) || "there")},</p>
+  <p>${esc(client)} has paid the advance and their time with you is confirmed.</p>
+  <table style="border-collapse:collapse;width:100%;font-size:14px;margin:16px 0">
+    ${shown.map(([k, v]) => `<tr><td style="padding:6px 12px 6px 0;color:#6b5a4d;vertical-align:top;white-space:nowrap">${esc(k)}</td><td style="padding:6px 0;vertical-align:top">${esc(v).replace(/\n/g, "<br>")}</td></tr>`).join("\n    ")}
+  </table>
+  <p style="margin:28px 0"><a href="${link}" style="background:#000;color:#fff;text-decoration:none;padding:14px 24px;font-size:12px;letter-spacing:.2em;text-transform:uppercase">Open your dashboard</a></p>
+  <p style="font-size:13px;color:#6b5a4d">Fourmen Events coordinates with the client for you. After the shoot, mark it as done in your dashboard and add the album link.</p>
+</div>`;
+  const text = `Hi ${firstName(ph.display_name) || "there"},\n\n${client} has paid the advance and their time with you is confirmed.\n\n${shown.map(([k, v]) => `${k}: ${v}`).join("\n")}\n\nYour dashboard: ${link}\n\nFourmen Events`;
+
+  return sendEmail(ph.email, `Confirmed booking: ${when} (${b.ref})`, html, text);
 }

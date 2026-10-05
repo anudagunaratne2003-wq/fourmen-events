@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireRole, envAdminEmails } from "@/lib/auth";
 import { db } from "@/lib/supabase/admin";
-import { notifyPhotosReady } from "@/lib/email";
+import { notifyPhotosReady, notifyPhotographerBooked } from "@/lib/email";
 import { STATUS, isStatus } from "@/lib/events";
 import { lkr, splitPayment, fullyPaid } from "@/lib/format";
 
@@ -18,9 +18,15 @@ export async function reviewPayment(fd: FormData) {
   const { data: b } = await d.from("bookings").select("*").eq("id", id).single();
   if (!b) return back("/admin", "Booking not found.");
 
+  let mailed = false;
   if (kind === "advance" && b.advance_status === "pending") {
-    if (approve) await d.from("bookings").update({ advance_status: "approved", review_note: null }).eq("id", id);
-    else {
+    if (approve) {
+      // Only the first approval wins, so the photographer is emailed exactly once.
+      const { data: won } = await d.from("bookings").update({ advance_status: "approved", review_note: null })
+        .eq("id", id).eq("advance_status", "pending").select("id");
+      if (!won?.length) return back("/admin", "That payment was already reviewed.");
+      mailed = await notifyPhotographerBooked(id);
+    } else {
       // Rejected advance: release the slot so someone else can book it.
       await d.from("bookings").update({ advance_status: "rejected", slot_id: null, review_note: note }).eq("id", id);
       if (b.slot_id) await d.from("slots").update({ status: "open" }).eq("id", b.slot_id);
@@ -32,7 +38,8 @@ export async function reviewPayment(fd: FormData) {
 
   await d.from("audit_log").insert({ actor_id: admin.id, action: `${kind}_${approve ? "approved" : "rejected"}`, booking_id: id, detail: { note } });
   revalidatePath("/admin");
-  back("/admin", `${b.ref}: ${kind} ${approve ? "approved" : "rejected"}.`);
+  const tail = kind === "advance" && approve ? (mailed ? " The photographer was emailed." : " The photographer was not emailed (check email settings).") : "";
+  back("/admin", `${b.ref}: ${kind} ${approve ? "approved" : "rejected"}.${tail}`);
 }
 
 export async function saveEvent(fd: FormData) {
