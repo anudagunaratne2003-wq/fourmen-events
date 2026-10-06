@@ -3,7 +3,7 @@ import Link from "next/link";
 import { db } from "@/lib/supabase/admin";
 import { getUser } from "@/lib/auth";
 import { portfolioUrl } from "@/lib/storage";
-import { lkr } from "@/lib/format";
+import { lkr, ADVANCE_LKR } from "@/lib/format";
 import Gallery from "@/components/Gallery";
 import BookingFlow from "@/components/BookingFlow";
 import { eyebrow, h1 } from "@/lib/ui";
@@ -56,7 +56,7 @@ export default async function PhotographerPage({ params }: { params: Promise<{ s
             </div>
           ) : <BookingFlow
             eventId={ev.id} photographerId={ph.id} photographerName={name}
-            advance={ev.advance_lkr} payment={ev.payment_instructions} ceremonyNote={ev.ceremony_note}
+            advance={ADVANCE_LKR} payment={ev.payment_instructions} ceremonyNote={ev.ceremony_note}
             packages={(pkgs ?? []).map((k) => ({ id: k.id, name: k.name, price: k.price_lkr, description: k.description, inclusions: k.inclusions }))}
             slots={(slots ?? []).map((s) => ({ id: s.id, date: s.slot_date, start: s.start_time }))}
             user={user && user.role === "client" ? { name: user.name, email: user.email, phone: user.phone ?? "" } : null}

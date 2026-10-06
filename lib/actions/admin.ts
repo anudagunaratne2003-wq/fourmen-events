@@ -5,7 +5,7 @@ import { requireRole, envAdminEmails } from "@/lib/auth";
 import { db } from "@/lib/supabase/admin";
 import { notifyPhotosReady, notifyPhotographerBooked, notifyPhotographerPaidInFull, notifyApplicationDecision, lastEmailError } from "@/lib/email";
 import { STATUS, isStatus } from "@/lib/events";
-import { lkr, splitPayment, fullyPaid } from "@/lib/format";
+import { lkr, splitPayment, fullyPaid, ADVANCE_LKR } from "@/lib/format";
 import { parseBankForm, saveBankAccount } from "@/lib/bank";
 
 // "t" makes every message unique, so the same result twice in a row still shows a toast.
@@ -58,7 +58,7 @@ export async function saveEvent(fd: FormData) {
     university: String(fd.get("university")).trim(), name: String(fd.get("name")).trim(),
     venue: String(fd.get("venue") || "").trim() || null,
     event_dates: String(fd.get("dates") || "").split(/[\s,]+/).filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s)),
-    advance_lkr: Math.round(Number(fd.get("advance") || 0)), slot_minutes: Math.round(Number(fd.get("slot_minutes") || 45)),
+    advance_lkr: ADVANCE_LKR, slot_minutes: Math.round(Number(fd.get("slot_minutes") || 45)),
     payment_instructions: String(fd.get("payment") || "").trim() || null,
     ceremony_note: String(fd.get("ceremony") || "").trim() || null,
     status: isStatus(String(fd.get("status"))) ? String(fd.get("status")) : "draft",
@@ -71,7 +71,6 @@ export async function saveEvent(fd: FormData) {
   const bad = typed.filter((s) => !/^\d{4}-\d{2}-\d{2}$/.test(s) || isNaN(Date.parse(s)));
   if (bad.length) return back("/admin/events", `Check the dates: ${bad.join(", ")}. Use YYYY-MM-DD, e.g. 2026-11-14.`);
   row.event_dates = [...new Set(row.event_dates)].sort();
-  if (!(row.advance_lkr >= 0)) return back("/admin/events", "The advance must be 0 or more.");
   if (!(row.slot_minutes >= 10 && row.slot_minutes <= 240)) return back("/admin/events", "Slot length must be between 10 and 240 minutes.");
 
   const d = db();
@@ -84,7 +83,6 @@ export async function saveEvent(fd: FormData) {
   if (!before) return back("/admin/events", `${row.name} created.`);
   // Say what the change means for bookings and slots that already exist.
   const notes: string[] = [];
-  if (before.advance_lkr !== row.advance_lkr) notes.push(`New bookings will pay LKR ${row.advance_lkr.toLocaleString("en-US")} advance; existing bookings keep the amount they agreed to.`);
   if (before.slot_minutes !== row.slot_minutes) notes.push(`New slots will be ${row.slot_minutes} minutes; slots already created keep their times.`);
   if (before.slug !== row.slug) notes.push(`The event page moved to /graduation/${row.slug}; old shared links will stop working.`);
   await d.from("audit_log").insert({ actor_id: admin.id, action: "event_edited", detail: { event_id: id, before, after: { advance_lkr: row.advance_lkr, slot_minutes: row.slot_minutes, slug: row.slug } } });

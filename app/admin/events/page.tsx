@@ -1,5 +1,5 @@
 import { db } from "@/lib/supabase/admin";
-import { fmtDate, lkr } from "@/lib/format";
+import { fmtDate, lkr, ADVANCE_LKR } from "@/lib/format";
 import { saveEvent, setEventPhotographers, setEventStatus } from "@/lib/actions/admin";
 import { STATUS, type EventStatus } from "@/lib/events";
 import { btnSmall, btnSmallDark, h2, input, label } from "@/lib/ui";
@@ -7,7 +7,7 @@ import SubmitButton from "@/components/SubmitButton";
 
 type Ev = { id: string; slug: string; university: string; name: string; venue: string | null; event_dates: string[]; advance_lkr: number; slot_minutes: number; payment_instructions: string | null; ceremony_note: string | null; status: string; reveal_name_on: string | null; reveal_phone_on: string | null };
 
-function EventForm({ e, bookings = 0 }: { e?: Ev; bookings?: number }) {
+function EventForm({ e }: { e?: Ev }) {
   return (
     <form action={saveEvent} className="mt-4 grid gap-3 md:grid-cols-2">
       {e && <input type="hidden" name="id" value={e.id} />}
@@ -17,8 +17,7 @@ function EventForm({ e, bookings = 0 }: { e?: Ev; bookings?: number }) {
       <div><label className={label}>Venue</label><input name="venue" defaultValue={e?.venue ?? ""} className={input} /></div>
       <div><label className={label}>Dates (YYYY-MM-DD, separated by commas){e && " · removing a date keeps its slots"}</label><input name="dates" defaultValue={e?.event_dates.join(", ")} className={input} placeholder="2026-11-14, 2026-11-15" /></div>
       <div className="grid grid-cols-2 gap-3">
-        {e && bookings > 0 && <p className="col-span-2 text-xs text-[#9b5b2b]">{bookings} existing booking{bookings === 1 ? "" : "s"} keep their original advance. Changes apply to new bookings and new slots.</p>}
-        <div><label className={label}>Advance (LKR)</label><input name="advance" type="number" min={0} defaultValue={e?.advance_lkr ?? 5000} className={input} /></div>
+        <div><span className={label}>Advance</span><p className="border border-black/10 bg-[#f8f4ef] px-4 py-3 text-sm text-black/60">{lkr(ADVANCE_LKR)} (fixed)</p></div>
         <div><label className={label}>Slot length (min)</label><input name="slot_minutes" type="number" min={10} max={240} defaultValue={e?.slot_minutes ?? 45} className={input} /></div>
       </div>
       <div className="md:col-span-2"><label className={label}>Payment instructions (bank details)</label><textarea name="payment" rows={3} defaultValue={e?.payment_instructions ?? ""} className={input} /></div>
@@ -64,7 +63,7 @@ export default async function EventsAdmin() {
               <dl className="mt-3 grid gap-x-6 gap-y-1 text-sm text-black/65 sm:grid-cols-2">
                 <div><dt className="inline text-black/45">Dates: </dt><dd className="inline">{e.event_dates.length ? e.event_dates.map(fmtDate).join(" · ") : "not set"}</dd></div>
                 <div><dt className="inline text-black/45">Venue: </dt><dd className="inline">{e.venue || "not set"}</dd></div>
-                <div><dt className="inline text-black/45">Advance: </dt><dd className="inline">{lkr(e.advance_lkr)}</dd></div>
+                <div><dt className="inline text-black/45">Advance: </dt><dd className="inline">{lkr(ADVANCE_LKR)} (fixed)</dd></div>
                 <div><dt className="inline text-black/45">Slot length: </dt><dd className="inline">{e.slot_minutes} min</dd></div>
                 <div><dt className="inline text-black/45">Page: </dt><dd className="inline">/graduation/{e.slug}</dd></div>
                 <div><dt className="inline text-black/45">Bookings: </dt><dd className="inline">{bookingCount(e.id)}</dd></div>
@@ -72,7 +71,7 @@ export default async function EventsAdmin() {
               <StatusControls e={e} />
               <details className="group mt-5 border-t border-black/10 pt-4">
               <summary className={`${btnSmall} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}><span className="group-open:hidden">Edit details (dates, advance, venue, bank details…)</span><span className="hidden group-open:inline">Close editor</span></summary>
-              <EventForm e={e} bookings={bookingCount(e.id)} />
+              <EventForm e={e} />
               <form action={setEventPhotographers} className="mt-6 border-t border-black/10 pt-5">
                 <input type="hidden" name="event" value={e.id} />
                 <p className="mb-3 text-xs uppercase tracking-[0.2em] text-[#9b5b2b]">Photographers shooting this event</p>

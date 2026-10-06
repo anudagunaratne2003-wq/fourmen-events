@@ -3,7 +3,7 @@ import Link from "next/link";
 import { db } from "@/lib/supabase/admin";
 import { publicName } from "@/lib/reveal";
 import { portfolioUrl } from "@/lib/storage";
-import { fmtDate, lkr } from "@/lib/format";
+import { fmtDate, lkr, ADVANCE_LKR } from "@/lib/format";
 import { eyebrow, h1 } from "@/lib/ui";
 import { STATUS, VISIBLE, type EventStatus } from "@/lib/events";
 
@@ -30,7 +30,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
           <h1 className={`${h1} mt-4`}>{ev.university}</h1>
           <p className="mt-3 text-base font-medium uppercase tracking-[0.2em] text-[#9b5b2b] md:text-lg">{ev.name}</p>
           <p className="mt-5 text-sm leading-7 text-black/60">
-            {ev.event_dates.map(fmtDate).join(" · ")}{ev.venue ? ` · ${ev.venue}` : ""}<br />Advance to book: {lkr(ev.advance_lkr)}
+            {ev.event_dates.map(fmtDate).join(" · ")}{ev.venue ? ` · ${ev.venue}` : ""}<br />Advance to book: {lkr(ADVANCE_LKR)}
           </p>
           {STATUS[ev.status as EventStatus].banner && <p className="mt-5 max-w-2xl bg-black px-4 py-3 text-sm text-white">{STATUS[ev.status as EventStatus].banner}</p>}
           {ev.ceremony_note && <p className="mt-5 max-w-2xl border-l-4 border-[#9b5b2b] bg-white px-4 py-3 text-sm text-black/70">{ev.ceremony_note}</p>}

@@ -34,10 +34,12 @@ export const TERMS = {
     {
       title: "Payments",
       clauses: [
-        "To book a time slot, the client pays an advance of LKR 4,000.",
-        "Of that advance, LKR 2,000 is transferred to your bank account and LKR 2,000 is the Fourmen service charge.",
-        "After the graduation, the remaining balance is paid to you in full. You are encouraged to ask clients to pay the balance through the platform, so that it reaches your account directly.",
-        "You must keep your payout bank details in your dashboard correct and up to date. Fourmen is not responsible for transfers sent to incorrect details you provided.",
+        "To book a time slot, the client pays a fixed advance of LKR 4,000.",
+        "All client payments, including the advance and the remaining balance, are made to Fourmen Events through the platform. Fourmen verifies every payment before any amount is released to you.",
+        "Of the advance, LKR 2,000 is retained by Fourmen as its service charge. The remaining LKR 2,000 is remitted to your nominated bank account once the advance has been verified.",
+        "The remaining balance is paid by the client through the platform, before or after the shoot. Once Fourmen has verified the balance payment, the full balance is remitted to your nominated bank account. Fourmen makes no further deduction from the balance.",
+        "Remittances are made manually by bank transfer within a reasonable time after verification. Please ask clients to pay through the platform, so that every payment is verified and recorded and the booking stays protected.",
+        "You must keep the payout bank details in your dashboard accurate and up to date. Fourmen is not responsible for transfers made to incorrect details that you provided.",
       ],
     },
     {

@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { getUser } from "@/lib/auth";
 import { db } from "@/lib/supabase/admin";
-import { splitPayment, balanceOf } from "@/lib/format";
+import { splitPayment, balanceOf, ADVANCE_LKR } from "@/lib/format";
 import { notifyAdminsPaymentToReview } from "@/lib/email";
 
 const REF_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -41,7 +41,7 @@ export async function createBooking(i: BookingInput): Promise<{ id?: string; err
   if (!claimed || claimed.length === 0) return { error: "Sorry, that time was just taken. Please pick another." };
 
   // Never ask for more upfront than the package costs.
-  const pay = splitPayment(pkg.price_lkr, ev.advance_lkr);
+  const pay = splitPayment(pkg.price_lkr, ADVANCE_LKR);
   for (let tries = 0; tries < 4; tries++) {
     const { data: row, error } = await d.from("bookings").insert({
       ref: newRef(), client_id: user.id, event_id: ev.id, photographer_id: i.photographerId,

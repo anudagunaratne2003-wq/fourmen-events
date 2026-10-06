@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { db } from "@/lib/supabase/admin";
-import { fmtDate, lkr } from "@/lib/format";
+import { fmtDate, lkr, ADVANCE_LKR } from "@/lib/format";
 import { eyebrow, h1 } from "@/lib/ui";
 import { STATUS, VISIBLE, type EventStatus } from "@/lib/events";
 
@@ -81,7 +81,7 @@ export default async function Graduation() {
                   <br />
                   {e.venue}
                   <br />
-                  Advance to book: {lkr(e.advance_lkr)}
+                  Advance to book: {lkr(ADVANCE_LKR)}
                 </p>
                 <span className="mt-5 inline-block text-[11px] font-semibold uppercase tracking-[0.25em] text-[#9b5b2b]">
                   {e.status === "open"

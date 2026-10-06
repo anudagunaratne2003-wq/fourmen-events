@@ -1,4 +1,7 @@
 export const lkr = (n: number) => "LKR " + Number(n).toLocaleString("en-US");
+
+/** Every booking takes the same fixed advance (Photographer Terms, clause 4.1). Change it here only. */
+export const ADVANCE_LKR = 4000;
 export const fmtDate = (d: string) =>
   new Date(d + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 export const fmtTime = (t: string) => {
