@@ -286,16 +286,18 @@ export async function notifyNewReview(bookingId: string) {
   return sendEmail(ph.email, `New ${review.rating}-star review (${b.ref})`, html, text);
 }
 
-// ---------- Photographer identity reveal notices (Terms, clause 5) ----------
+// ---------- Booking confirmation and photographer reveal (Terms, clause 5) ----------
+// The photographer's name and phone number are revealed together, on one date.
 
 type RevealRow = {
   id: string; ref: string; client_name: string; client_email: string; advance_status: string;
-  reveal_name_on: string | null; reveal_phone_on: string | null;
-  name_reveal_emailed_for: string | null; phone_reveal_emailed_for: string | null;
-  events: { name: string; university: string; reveal_name_on: string | null; reveal_phone_on: string | null } | null;
+  package_name: string; package_price: number; advance_lkr: number;
+  reveal_name_on: string | null; reveal_phone_on: string | null; name_reveal_emailed_for: string | null;
+  events: { name: string; university: string; venue: string | null; reveal_name_on: string | null; reveal_phone_on: string | null } | null;
+  slots: { slot_date: string; start_time: string } | null;
   photographers: { id: string; email: string; display_name: string; alias: string | null; contact_phone: string | null } | null;
 };
-const REVEAL_SELECT = "id, ref, client_name, client_email, advance_status, reveal_name_on, reveal_phone_on, name_reveal_emailed_for, phone_reveal_emailed_for, events(name, university, reveal_name_on, reveal_phone_on), photographers(id, email, display_name, alias, contact_phone)";
+const REVEAL_SELECT = "id, ref, client_name, client_email, advance_status, package_name, package_price, advance_lkr, reveal_name_on, reveal_phone_on, name_reveal_emailed_for, events(name, university, venue, reveal_name_on, reveal_phone_on), slots(slot_date, start_time), photographers(id, email, display_name, alias, contact_phone)";
 
 async function revealRows(bookingIds?: string[]) {
   let q = db().from("bookings").select(REVEAL_SELECT).eq("advance_status", "approved");
@@ -303,74 +305,93 @@ async function revealRows(bookingIds?: string[]) {
   const { data } = await q;
   return (data ?? []) as unknown as RevealRow[];
 }
-const when = (d: string | null) => (d ? fmtDate(d) : "a date to be confirmed");
+const eventLabel = (b: RevealRow) => [b.events?.university, b.events?.name].filter(Boolean).join(" · ");
+const revealLine = (on: string | null) =>
+  on ? `Your photographer's name and phone number will be shared on ${fmtDate(on)}.` : "Your photographer's name and phone number will be shared about two weeks before your shoot.";
+const markRevealed = (id: string, on: string) => db().from("bookings").update({ name_reveal_emailed_for: on, phone_reveal_emailed_for: on }).eq("id", id);
 
-/** Admin set or changed reveal dates: tell the client and photographer when details will be shared. */
+/** The photographer's details block, once revealed. */
+function detailsBlock(ph: NonNullable<RevealRow["photographers"]>) {
+  return `<p style="background:#f8f4ef;border:1px solid #dbcfc1;padding:12px 16px">Photographer: <b>${esc(ph.display_name)}</b> (shown so far as ${esc(publicName(ph))})${ph.contact_phone ? `<br>Phone: <b>${esc(ph.contact_phone)}</b>` : ""}</p>`;
+}
+
+/** Client: booking confirmed after the admin approves the advance. Includes when the photographer's
+ *  details will be shared, or the details themselves if that date has already arrived. */
+export async function notifyClientBookingConfirmed(bookingId: string) {
+  const [b] = await revealRows([bookingId]);
+  const ph = b?.photographers;
+  if (!b || !ph) return false;
+  const r = revealFor(b, b.events);
+  const balance = Math.max(b.package_price - b.advance_lkr, 0);
+  const rows: [string, string][] = [
+    ["Booking reference", b.ref],
+    ["University", b.events?.university ?? ""], ["Event", b.events?.name ?? ""],
+    ["Date and time", b.slots ? `${fmtDate(b.slots.slot_date)}, ${fmtTime(b.slots.start_time)}` : ""],
+    ["Venue", b.events?.venue ?? ""],
+    ["Photographer", r.name ? ph.display_name : publicName(ph)],
+    ["Package", `${b.package_name} (${lkr(b.package_price)})`],
+    ["Advance paid", lkr(b.advance_lkr)],
+    ["Balance to pay", balance ? `${lkr(balance)}, before or after your shoot` : "Nothing, paid in full"],
+  ];
+  const shown = rows.filter(([, v]) => v);
+  const table = `<table style="border-collapse:collapse;width:100%;font-size:14px;margin:12px 0">${shown.map(([k, v]) => `<tr><td style="padding:5px 12px 5px 0;color:#6b5a4d;white-space:nowrap;vertical-align:top">${esc(k)}</td><td style="padding:5px 0;vertical-align:top">${esc(v)}</td></tr>`).join("")}</table>`;
+  const reveal = r.name
+    ? `<p>Here are your photographer's details. You can now contact them directly:</p>${detailsBlock(ph)}`
+    : `<p><b>${esc(revealLine(r.on))}</b> We will email you then. Until that date, Fourmen Events coordinates with your photographer for you.</p>`;
+  const html = emailLayout(b.ref, "Booking confirmed", `<p>Hi ${esc(firstName(b.client_name) || "there")},</p>
+  <p>Thank you. We have received your advance payment and your booking is confirmed.</p>${table}${reveal}`,
+    { href: `${siteUrl()}/account/bookings/${b.id}`, label: "View your booking" });
+  const text = `Hi ${firstName(b.client_name) || "there"},\n\nWe have received your advance payment and your booking is confirmed.\n\n${shown.map(([k, v]) => `${k}: ${v}`).join("\n")}\n\n${r.name ? `Your photographer: ${ph.display_name}${ph.contact_phone ? `, ${ph.contact_phone}` : ""}. You can now contact them directly.` : `${revealLine(r.on)} We will email you then.`}\n\nYour booking: ${siteUrl()}/account/bookings/${b.id}\n\nFourmen Events`;
+  const ok = await sendEmail(b.client_email, `Booking confirmed: ${b.ref}`, html, text);
+  // Details already included, so the separate reveal email is not needed for this date.
+  if (ok && r.name && r.on) await markRevealed(b.id, r.on);
+  return ok;
+}
+
+/** Admin set or changed the reveal date: tell the client and photographer when details will be shared. */
 export async function notifyRevealSchedule(bookingIds: string[]) {
   for (const b of await revealRows(bookingIds)) {
     const ph = b.photographers;
     if (!ph) continue;
     const r = revealFor(b, b.events);
-    if (r.name && r.phone) continue; // already fully revealed: the reveal notice covers it
-    const stage = publicName(ph), event = [b.events?.university, b.events?.name].filter(Boolean).join(" · ");
-    const client = firstName(b.client_name) || "your client";
-
-    const cBody = `<p>Hi ${esc(firstName(b.client_name) || "there")},</p>
-  <p>Here is when your photographer's details will be shared for your booking${event ? ` (${esc(event)})` : ""}:</p>
-  <p style="background:#f8f4ef;border:1px solid #dbcfc1;padding:12px 16px">Name: ${esc(r.name ? "already shared" : when(r.nameOn))}<br>Phone number: ${esc(r.phone ? "already shared" : when(r.phoneOn))}</p>
-  <p>Until then your photographer appears as <b>${esc(stage)}</b>, and Fourmen Events coordinates with them for you. We will email you again when the details are shared.</p>`;
+    if (r.name) continue; // already revealed: the reveal email covers it
+    const event = eventLabel(b), client = firstName(b.client_name) || "your client";
     await sendEmail(b.client_email, `When you'll get your photographer's details (${b.ref})`,
-      emailLayout(b.ref, "Photographer details", cBody, { href: `${siteUrl()}/account/bookings/${b.id}`, label: "View your booking" }),
-      `Hi ${firstName(b.client_name) || "there"},\n\nYour photographer's details for ${b.ref}${event ? ` (${event})` : ""} will be shared:\nName: ${r.name ? "already shared" : when(r.nameOn)}\nPhone number: ${r.phone ? "already shared" : when(r.phoneOn)}\n\nUntil then your photographer appears as ${stage}. We will email you again when the details are shared.\n\nFourmen Events`);
-
-    const pBody = `<p>Hi ${esc(firstName(ph.display_name) || "there")},</p>
-  <p>Your details will be shared with ${esc(client)} (${esc(b.ref)}${event ? `, ${esc(event)}` : ""}) on these dates:</p>
-  <p style="background:#f8f4ef;border:1px solid #dbcfc1;padding:12px 16px">Your name: ${esc(r.name ? "already shared" : when(r.nameOn))}<br>Your phone number: ${esc(r.phone ? "already shared" : when(r.phoneOn))}</p>`;
-    await sendEmail(ph.email, `Reveal dates set for ${b.ref}`,
-      emailLayout(b.ref, "Reveal dates", pBody, { href: `${siteUrl()}/photographer#bookings`, label: "Open your dashboard" }),
-      `Hi ${firstName(ph.display_name) || "there"},\n\nYour details will be shared with ${client} (${b.ref}${event ? `, ${event}` : ""}):\nYour name: ${r.name ? "already shared" : when(r.nameOn)}\nYour phone number: ${r.phone ? "already shared" : when(r.phoneOn)}\n\nFourmen Events`);
+      emailLayout(b.ref, "Photographer details", `<p>Hi ${esc(firstName(b.client_name) || "there")},</p>
+  <p>An update on your booking${event ? ` (${esc(event)})` : ""}: <b>${esc(revealLine(r.on))}</b></p>
+  <p>Until then your photographer appears as <b>${esc(publicName(ph))}</b>, and Fourmen Events coordinates with them for you. We will email you again on that day.</p>`,
+        { href: `${siteUrl()}/account/bookings/${b.id}`, label: "View your booking" }),
+      `Hi ${firstName(b.client_name) || "there"},\n\nAn update on your booking ${b.ref}${event ? ` (${event})` : ""}: ${revealLine(r.on)}\nUntil then your photographer appears as ${publicName(ph)}. We will email you again on that day.\n\nFourmen Events`);
+    await sendEmail(ph.email, `Reveal date for ${b.ref}`,
+      emailLayout(b.ref, "Reveal date", `<p>Hi ${esc(firstName(ph.display_name) || "there")},</p>
+  <p>Your name and phone number will be shared with ${esc(client)} (${esc(b.ref)}${event ? `, ${esc(event)}` : ""}) on <b>${esc(r.on ? fmtDate(r.on) : "a date to be confirmed")}</b>.</p>`,
+        { href: `${siteUrl()}/photographer#bookings`, label: "Open your dashboard" }),
+      `Hi ${firstName(ph.display_name) || "there"},\n\nYour name and phone number will be shared with ${client} (${b.ref}${event ? `, ${event}` : ""}) on ${r.on ? fmtDate(r.on) : "a date to be confirmed"}.\n\nFourmen Events`);
   }
 }
 
-/** Sends the "details are now shared" emails for reveals that are due and not yet announced.
- *  Run daily by the cron job, and right after admins change dates or approve an advance. */
+/** Reveal day: one email to the client with the photographer's name and phone, and one to the photographer.
+ *  Run daily by the cron job, and right after admins change dates. Each date is announced once. */
 export async function processReveals(bookingIds?: string[]) {
   let sent = 0;
   for (const b of await revealRows(bookingIds)) {
     const ph = b.photographers;
     if (!ph) continue;
     const r = revealFor(b, b.events);
-    const nameDue = r.name && r.nameOn && b.name_reveal_emailed_for !== r.nameOn ? r.nameOn : null;
-    // If only the phone date was set, the name is shared with it.
-    const nameDueViaPhone = r.name && !r.nameOn && r.phoneOn && b.name_reveal_emailed_for !== r.phoneOn ? r.phoneOn : null;
-    const phoneDue = r.phone && r.phoneOn && b.phone_reveal_emailed_for !== r.phoneOn ? r.phoneOn : null;
-    const newName = nameDue ?? nameDueViaPhone;
-    if (!newName && !phoneDue) continue;
-
-    const event = [b.events?.university, b.events?.name].filter(Boolean).join(" · ");
-    const phone = r.phone ? ph.contact_phone : null;
-    const client = firstName(b.client_name) || "your client";
-    const cBody = `<p>Hi ${esc(firstName(b.client_name) || "there")},</p>
-  <p>As your shoot${event ? ` (${esc(event)})` : ""} is coming up, here are your photographer's details:</p>
-  <p style="background:#f8f4ef;border:1px solid #dbcfc1;padding:12px 16px">Photographer: <b>${esc(ph.display_name)}</b> (shown so far as ${esc(publicName(ph))})${phone ? `<br>Phone: <b>${esc(phone)}</b>` : `<br>Phone number: ${esc(when(r.phoneOn))}`}</p>
-  <p>You can now contact your photographer directly. Fourmen Events is still here if you need any help.</p>`;
+    if (!r.name || !r.on || b.name_reveal_emailed_for === r.on) continue;
+    const event = eventLabel(b), client = firstName(b.client_name) || "your client";
     const ok = await sendEmail(b.client_email, `Your photographer's details (${b.ref})`,
-      emailLayout(b.ref, "Meet your photographer", cBody, { href: `${siteUrl()}/account/bookings/${b.id}`, label: "View your booking" }),
-      `Hi ${firstName(b.client_name) || "there"},\n\nYour photographer for ${b.ref}${event ? ` (${event})` : ""} is ${ph.display_name} (shown so far as ${publicName(ph)}).${phone ? `\nPhone: ${phone}` : `\nPhone number: ${when(r.phoneOn)}`}\n\nYou can now contact your photographer directly.\n\nFourmen Events`);
-
+      emailLayout(b.ref, "Meet your photographer", `<p>Hi ${esc(firstName(b.client_name) || "there")},</p>
+  <p>As your shoot${event ? ` (${esc(event)})` : ""} is coming up, here are your photographer's details:</p>${detailsBlock(ph)}
+  <p>You can now contact your photographer directly. Fourmen Events is still here if you need any help.</p>`,
+        { href: `${siteUrl()}/account/bookings/${b.id}`, label: "View your booking" }),
+      `Hi ${firstName(b.client_name) || "there"},\n\nYour photographer for ${b.ref}${event ? ` (${event})` : ""} is ${ph.display_name} (shown so far as ${publicName(ph)}).${ph.contact_phone ? `\nPhone: ${ph.contact_phone}` : ""}\n\nYou can now contact your photographer directly.\n\nFourmen Events`);
     await sendEmail(ph.email, `Your details are now shared with ${client} (${b.ref})`,
       emailLayout(b.ref, "Details shared with your client", `<p>Hi ${esc(firstName(ph.display_name) || "there")},</p>
-  <p>Your ${phone ? "name and phone number are" : "name is"} now visible to ${esc(client)} for ${esc(b.ref)}${event ? ` (${esc(event)})` : ""}, so they may contact you directly. Please keep handling the booking professionally and through Fourmen where needed.</p>`,
+  <p>Your name and phone number are now visible to ${esc(client)} for ${esc(b.ref)}${event ? ` (${esc(event)})` : ""}, so they may contact you directly. Please keep handling the booking professionally and through Fourmen where needed.</p>`,
         { href: `${siteUrl()}/photographer#bookings`, label: "Open your dashboard" }),
-      `Hi ${firstName(ph.display_name) || "there"},\n\nYour ${phone ? "name and phone number are" : "name is"} now visible to ${client} for ${b.ref}${event ? ` (${event})` : ""}, so they may contact you directly.\n\nFourmen Events`);
-
-    if (ok) {
-      await db().from("bookings").update({
-        ...(newName ? { name_reveal_emailed_for: newName } : {}),
-        ...(phoneDue ? { phone_reveal_emailed_for: phoneDue } : {}),
-      }).eq("id", b.id);
-      sent++;
-    }
+      `Hi ${firstName(ph.display_name) || "there"},\n\nYour name and phone number are now visible to ${client} for ${b.ref}${event ? ` (${event})` : ""}, so they may contact you directly.\n\nFourmen Events`);
+    if (ok) { await markRevealed(b.id, r.on); sent++; }
   }
   return sent;
 }

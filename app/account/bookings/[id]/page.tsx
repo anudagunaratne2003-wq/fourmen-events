@@ -78,10 +78,9 @@ export default async function BookingPage({ params, searchParams }: { params: Pr
           <p className="text-[10px] uppercase tracking-[0.3em] text-[#9b5b2b]">Your photographer</p>
           <p className="mt-2 text-xl font-light uppercase tracking-[0.1em]">{photographer}</p>
           {phone && <p className="mt-2 text-sm">Phone: <a href={`tel:${phone.replace(/[^\d+]/g, "")}`} className="font-medium text-[#9b5b2b] underline">{phone}</a></p>}
-          {(!reveal.name || !reveal.phone) && (
+          {!reveal.name && (
             <p className="mt-2 text-xs text-black/50">
-              {!reveal.name ? (reveal.nameOn ? `Your photographer's real name will appear here on ${fmtDate(reveal.nameOn)}.` : "Your photographer's real name will appear here closer to your shoot.") + " " : ""}
-              {reveal.phoneOn ? `Their phone number will appear on ${fmtDate(reveal.phoneOn)}.` : "Their phone number will be shared closer to your shoot."}
+              {reveal.on ? `Your photographer's name and phone number will appear here on ${fmtDate(reveal.on)}, and we will email you.` : "Your photographer's name and phone number will be shared about two weeks before your shoot, and we will email you."}
             </p>
           )}
           <p className="mt-3 text-sm leading-7 text-black/65">

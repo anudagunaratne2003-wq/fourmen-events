@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireRole, envAdminEmails } from "@/lib/auth";
 import { db } from "@/lib/supabase/admin";
-import { notifyPhotosReady, notifyPhotographerBooked, notifyPhotographerPaidInFull, notifyApplicationDecision, lastEmailError, notifyRevealSchedule, processReveals } from "@/lib/email";
+import { notifyPhotosReady, notifyPhotographerBooked, notifyPhotographerPaidInFull, notifyApplicationDecision, lastEmailError, notifyRevealSchedule, processReveals, notifyClientBookingConfirmed } from "@/lib/email";
 import { STATUS, isStatus } from "@/lib/events";
 import { lkr, splitPayment, fullyPaid, ADVANCE_LKR } from "@/lib/format";
 import { parseBankForm, saveBankAccount } from "@/lib/bank";
@@ -20,7 +20,7 @@ export async function reviewPayment(fd: FormData) {
   const { data: b } = await d.from("bookings").select("*").eq("id", id).single();
   if (!b) return back("/admin", "Booking not found.");
 
-  let mailed = false;
+  let mailed = false, clientMailed: boolean | null = null;
   if (kind === "advance" && b.advance_status === "pending") {
     if (approve) {
       // Only the first approval wins, so the photographer is emailed exactly once.
@@ -28,7 +28,7 @@ export async function reviewPayment(fd: FormData) {
         .eq("id", id).eq("advance_status", "pending").select("id");
       if (!won?.length) return back("/admin", "That payment was already reviewed.");
       mailed = await notifyPhotographerBooked(id);
-      await processReveals([id]); // if the reveal date has already passed, share the details now
+      clientMailed = await notifyClientBookingConfirmed(id); // includes the reveal date, or the details if already due
     } else {
       // Rejected advance: release the slot so someone else can book it.
       await d.from("bookings").update({ advance_status: "rejected", slot_id: null, review_note: note }).eq("id", id);
@@ -47,7 +47,8 @@ export async function reviewPayment(fd: FormData) {
 
   await d.from("audit_log").insert({ actor_id: admin.id, action: `${kind}_${approve ? "approved" : "rejected"}`, booking_id: id, detail: { note } });
   revalidatePath("/admin");
-  const tail = approve ? (mailed ? " The photographer was emailed." : ` The photographer was not emailed (${lastEmailError() || "unknown error"}).`) : "";
+  const tail = (approve ? (mailed ? " The photographer was emailed." : ` The photographer was not emailed (${lastEmailError() || "unknown error"}).`) : "")
+    + (clientMailed === null ? "" : clientMailed ? " The client was sent a booking confirmation." : " The client's confirmation email could not be sent.");
   back("/admin", `${b.ref}: ${kind} ${approve ? "approved" : "rejected"}.${tail}`);
 }
 
@@ -63,8 +64,9 @@ export async function saveEvent(fd: FormData) {
     payment_instructions: String(fd.get("payment") || "").trim() || null,
     ceremony_note: String(fd.get("ceremony") || "").trim() || null,
     status: isStatus(String(fd.get("status"))) ? String(fd.get("status")) : "draft",
-    reveal_name_on: isoDate(fd.get("reveal_name_on")),
-    reveal_phone_on: isoDate(fd.get("reveal_phone_on")),
+    // Name and phone are revealed together, so both columns get the same date.
+    reveal_name_on: isoDate(fd.get("reveal_on")),
+    reveal_phone_on: isoDate(fd.get("reveal_on")),
   };
   if (!row.slug || !row.university || !row.name) return back("/admin/events", "Slug, university and name are required.");
   // Reject typos instead of silently dropping them (e.g. "2026-11-3" or "14/11/2026").
@@ -201,7 +203,8 @@ export async function setPhotographerAlias(fd: FormData) {
 export async function setBookingReveal(fd: FormData) {
   const admin = await requireRole("admin");
   const id = String(fd.get("id"));
-  const row = { reveal_name_on: isoDate(fd.get("reveal_name_on")), reveal_phone_on: isoDate(fd.get("reveal_phone_on")) };
+  const on = isoDate(fd.get("reveal_on"));
+  const row = { reveal_name_on: on, reveal_phone_on: on };
   const { data: before } = await db().from("bookings").select("reveal_name_on, reveal_phone_on, advance_status").eq("id", id).maybeSingle();
   const { data } = await db().from("bookings").update(row).eq("id", id).select("ref").maybeSingle();
   if (!data || !before) return back("/admin", "Booking not found.");

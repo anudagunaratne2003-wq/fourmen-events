@@ -66,7 +66,7 @@ export default async function AdminHome() {
       <h2 className="mb-4 mt-12 text-xl font-light uppercase tracking-[0.16em]">All bookings</h2>
       <div className="overflow-x-auto border border-[#dbcfc1] bg-white">
         <table className="w-full text-left text-sm">
-          <thead className="text-xs uppercase tracking-[0.15em] text-black/45"><tr>{["Ref", "Client", "Event", "Photographer", "Package", "Status", "Reveal to client (blank = event date)"].map((h) => <th key={h} className="px-4 py-3 font-normal">{h}</th>)}</tr></thead>
+          <thead className="text-xs uppercase tracking-[0.15em] text-black/45"><tr>{["Ref", "Client", "Event", "Photographer", "Package", "Status", "Reveal name & phone (blank = event date)"].map((h) => <th key={h} className="px-4 py-3 font-normal">{h}</th>)}</tr></thead>
           <tbody className="divide-y divide-black/10">
             {rows.map((b) => (
               <tr key={b.id}><td className="px-4 py-3">{b.ref}</td><td className="px-4 py-3">{b.client_name}<br /><span className="text-black/45">{b.client_phone}</span></td><td className="px-4 py-3"><b className="font-semibold">{b.events?.university}</b><br /><span className="text-black/45">{b.events?.name}</span></td><td className="px-4 py-3">{b.photographers?.display_name}<br /><span className="text-black/45">as {b.photographers ? publicName(b.photographers) : ""}</span></td><td className="px-4 py-3">{b.package_name}<AmountsCell b={b} /></td><td className="px-4 py-3">{stageLabel(b)}{b.advance_status === "approved" && (
@@ -89,13 +89,12 @@ export default async function AdminHome() {
 
 function RevealCell({ b }: { b: { id: string; advance_status: string; reveal_name_on: string | null; reveal_phone_on: string | null; events: { reveal_name_on: string | null; reveal_phone_on: string | null } | null } }) {
   const r = revealFor(b, b.events);
-  const state = (shown: boolean, on: string | null) => (shown ? "shown" : on ? `from ${fmtDate(on)}` : "not set");
+  const own = b.reveal_name_on ?? b.reveal_phone_on ?? "";
   return (
     <form action={setBookingReveal} className="grid min-w-56 gap-1 text-xs">
       <input type="hidden" name="id" value={b.id} />
-      <label className="flex items-center justify-between gap-2">Name<input type="date" name="reveal_name_on" defaultValue={b.reveal_name_on ?? ""} className="border border-black/10 px-2 py-1" /></label>
-      <label className="flex items-center justify-between gap-2">Phone<input type="date" name="reveal_phone_on" defaultValue={b.reveal_phone_on ?? ""} className="border border-black/10 px-2 py-1" /></label>
-      <span className="text-black/45">{b.advance_status !== "approved" ? "Hidden until advance approved" : `Name ${state(r.name, r.nameOn)} · phone ${state(r.phone, r.phoneOn)}`}</span>
+      <label className="flex items-center justify-between gap-2">Name &amp; phone<input type="date" name="reveal_on" defaultValue={own} className="border border-black/10 px-2 py-1" /></label>
+      <span className="text-black/45">{b.advance_status !== "approved" ? "Hidden until advance approved" : r.name ? "Shared with client" : r.on ? `Shared on ${fmtDate(r.on)}${own ? "" : " (event date)"}` : "No date set"}</span>
       <SubmitButton className={`${btnSmall} px-2! py-1!`}>Save</SubmitButton>
     </form>
   );

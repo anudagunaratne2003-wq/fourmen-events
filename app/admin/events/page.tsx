@@ -23,9 +23,8 @@ function EventForm({ e }: { e?: Ev }) {
       <div className="md:col-span-2"><label className={label}>Payment instructions (bank details)</label><textarea name="payment" rows={3} defaultValue={e?.payment_instructions ?? ""} className={input} /></div>
       <div className="md:col-span-2"><label className={label}>Notice for students (e.g. ceremony times not announced yet). Leave empty for none.</label><input name="ceremony" defaultValue={e?.ceremony_note ?? ""} className={input} /></div>
       <div className="md:col-span-2 grid gap-3 border-t border-black/10 pt-3 sm:grid-cols-2">
-        <p className="text-xs text-black/50 sm:col-span-2">Clients see each photographer&apos;s stage name. Their real name and phone are shown to a client only after that client&apos;s advance is approved and these dates arrive. Leave empty to keep them hidden. You can override per booking on the Payments page.</p>
-        <div><label className={label}>Reveal photographer names on</label><input name="reveal_name_on" type="date" defaultValue={e?.reveal_name_on ?? ""} className={input} /></div>
-        <div><label className={label}>Reveal photographer phone numbers on</label><input name="reveal_phone_on" type="date" defaultValue={e?.reveal_phone_on ?? ""} className={input} /></div>
+        <p className="text-xs text-black/50 sm:col-span-2">Clients see each photographer&apos;s stage name. Their real name and phone number are shown to a client together, once that client&apos;s advance is approved and this date arrives (about two weeks before the event). Clients and photographers are emailed. Leave empty to keep them hidden. You can override per booking on the Payments page.</p>
+        <div><label className={label}>Reveal photographer name and phone number on</label><input name="reveal_on" type="date" defaultValue={e?.reveal_name_on ?? e?.reveal_phone_on ?? ""} className={input} /></div>
       </div>
       <div><label className={label}>Status</label>
         <select name="status" defaultValue={e?.status ?? "draft"} className={input}>{(Object.keys(STATUS) as EventStatus[]).map((k) => <option key={k} value={k}>{STATUS[k].label} ({STATUS[k].admin.toLowerCase()})</option>)}</select></div>
