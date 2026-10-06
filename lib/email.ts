@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "@/lib/supabase/admin";
 import { firstName, fullyPaid, fmtDate, fmtTime, lkr } from "@/lib/format";
+import { envAdminEmails } from "@/lib/auth";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/+$/, "");
@@ -99,4 +100,65 @@ export async function notifyPhotographerBooked(bookingId: string) {
   const text = `Hi ${firstName(ph.display_name) || "there"},\n\n${client} has paid the advance and their time with you is confirmed.\n\n${shown.map(([k, v]) => `${k}: ${v}`).join("\n")}\n\nYour dashboard: ${link}\n\nFourmen Events`;
 
   return sendEmail(ph.email, `Confirmed booking: ${when} (${b.ref})`, html, text);
+}
+
+/** Shared look for the simpler emails below. */
+function emailLayout(ref: string, heading: string, body: string, button?: { href: string; label: string }) {
+  return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#1c120c;line-height:1.6">
+  <p style="font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:#9b5b2b">Fourmen Events${ref ? ` · ${esc(ref)}` : ""}</p>
+  <h1 style="font-weight:300;letter-spacing:.08em;text-transform:uppercase;font-size:22px">${esc(heading)}</h1>
+  ${body}
+  ${button ? `<p style="margin:28px 0"><a href="${button.href}" style="background:#000;color:#fff;text-decoration:none;padding:14px 24px;font-size:12px;letter-spacing:.2em;text-transform:uppercase">${esc(button.label)}</a></p>` : ""}
+</div>`;
+}
+
+/** Everyone with admin access: the ADMIN_EMAILS setting plus the admin team list. */
+async function adminRecipients() {
+  const { data } = await db().from("admin_emails").select("email");
+  return [...new Set([...envAdminEmails(), ...(data ?? []).map((r) => String(r.email).trim().toLowerCase())])].filter(Boolean);
+}
+
+type Application = {
+  name: string; email: string; phone: string; city: string | null; portfolio_url: string | null;
+  instagram: string | null; experience: string | null; specialties: string | null; message: string | null;
+};
+
+/** New "Work with us" application: tell every admin, and confirm receipt to the applicant. */
+export async function notifyNewApplication(a: Application) {
+  const review = `${siteUrl()}/admin/photographers`;
+  const rows: [string, string][] = [
+    ["Name", a.name], ["Email", a.email], ["Phone", a.phone], ["City", a.city ?? ""],
+    ["Experience", a.experience ?? ""], ["Shoots", a.specialties ?? ""], ["Instagram", a.instagram ?? ""],
+  ];
+  const portfolio = a.portfolio_url && /^https?:\/\//i.test(a.portfolio_url)
+    ? `<p><a href="${esc(a.portfolio_url)}" style="color:#9b5b2b">View portfolio</a></p>` : "";
+  const table = `<table style="border-collapse:collapse;width:100%;font-size:14px;margin:12px 0">${rows.filter(([, v]) => v)
+    .map(([k, v]) => `<tr><td style="padding:5px 12px 5px 0;color:#6b5a4d;white-space:nowrap;vertical-align:top">${esc(k)}</td><td style="padding:5px 0;vertical-align:top">${esc(v)}</td></tr>`).join("")}</table>`;
+  const message = a.message ? `<p style="white-space:pre-line;border-left:3px solid #dbcfc1;padding-left:12px;color:#3d2c20">${esc(a.message)}</p>` : "";
+  const text = `New photographer application\n\n${rows.filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join("\n")}${a.portfolio_url ? `\nPortfolio: ${a.portfolio_url}` : ""}${a.message ? `\n\n${a.message}` : ""}\n\nReview it: ${review}`;
+
+  const admins = await adminRecipients();
+  await Promise.all([
+    ...admins.map((to) => sendEmail(to, `New photographer application: ${a.name}`,
+      emailLayout("", "New photographer application", `<p>${esc(a.name)} would like to work with Fourmen Events.</p>${table}${portfolio}${message}`, { href: review, label: "Review application" }), text)),
+    sendEmail(a.email, "We received your application",
+      emailLayout("", "Application received", `<p>Hi ${esc(firstName(a.name) || "there")},</p><p>Thank you for applying to shoot with Fourmen Events. Our team will look through your work and get back to you by email.</p>`),
+      `Hi ${firstName(a.name) || "there"},\n\nThank you for applying to shoot with Fourmen Events. Our team will look through your work and get back to you by email.\n\nFourmen Events`),
+  ]);
+}
+
+/** Tells the applicant the outcome. Approved applicants are told how to create their account. */
+export async function notifyApplicationDecision(a: { name: string; email: string }, approved: boolean) {
+  const hi = `Hi ${firstName(a.name) || "there"},`;
+  if (approved) {
+    const signup = `${siteUrl()}/login?mode=signup`;
+    return sendEmail(a.email, "Welcome to Fourmen Events",
+      emailLayout("", "You're approved", `<p>${esc(hi)}</p><p>Great news: your application to shoot with Fourmen Events has been approved.</p>
+  <p>Create your account using <b>this email address (${esc(a.email)})</b>. You will then have your own dashboard to add your packages, portfolio photos and available times.</p>`,
+        { href: signup, label: "Create your account" }),
+      `${hi}\n\nYour application to shoot with Fourmen Events has been approved.\nCreate your account with this email address (${a.email}) here: ${signup}\nYou will then have your own dashboard to add your packages, portfolio photos and available times.\n\nFourmen Events`);
+  }
+  return sendEmail(a.email, "Your Fourmen Events application",
+    emailLayout("", "Thank you for applying", `<p>${esc(hi)}</p><p>Thank you for your interest in working with Fourmen Events. We are not able to take your application forward at the moment, but we appreciate you sharing your work and wish you all the best.</p>`),
+    `${hi}\n\nThank you for your interest in working with Fourmen Events. We are not able to take your application forward at the moment, but we appreciate you sharing your work and wish you all the best.\n\nFourmen Events`);
 }

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireRole, envAdminEmails } from "@/lib/auth";
 import { db } from "@/lib/supabase/admin";
-import { notifyPhotosReady, notifyPhotographerBooked } from "@/lib/email";
+import { notifyPhotosReady, notifyPhotographerBooked, notifyApplicationDecision } from "@/lib/email";
 import { STATUS, isStatus } from "@/lib/events";
 import { lkr, splitPayment, fullyPaid } from "@/lib/format";
 
@@ -133,10 +133,12 @@ export async function reviewApplication(fd: FormData) {
     if (err) return back("/admin/photographers", err);
   }
   await d.from("photographer_applications").update({ status: approve ? "approved" : "declined", reviewed_at: new Date().toISOString(), reviewed_by: admin.id }).eq("id", id);
+  const mailed = await notifyApplicationDecision(a, approve);
   revalidatePath("/admin/photographers");
+  const told = mailed ? `We emailed ${a.email}` : `The email to ${a.email} could not be sent, so please contact them yourself`;
   back("/admin/photographers", approve
-    ? `${a.name} approved. Email them at ${a.email} and ask them to create an account at /login?mode=signup with that email.`
-    : `${a.name}'s application was declined.`);
+    ? `${a.name} approved. ${told} with instructions to create their account using that email.`
+    : `${a.name}'s application was declined. ${mailed ? `We emailed ${a.email} to let them know.` : `${told}.`}`);
 }
 
 export async function addAdminEmail(fd: FormData) {

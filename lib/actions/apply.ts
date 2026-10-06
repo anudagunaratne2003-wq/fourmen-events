@@ -1,6 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/supabase/admin";
+import { notifyNewApplication } from "@/lib/email";
 
 export type ApplyState = { ok?: boolean; error?: string };
 
@@ -30,7 +31,7 @@ export async function submitApplication(_prev: ApplyState, fd: FormData): Promis
   if (existing) return { error: "This email is already registered as a Fourmen photographer. Sign in at /login." };
   if (pending) return { error: "We already have your application and will be in touch soon." };
 
-  const { error } = await d.from("photographer_applications").insert({
+  const application = {
     name, email, phone,
     city: text(fd, "city", 120) || null,
     portfolio_url: portfolio || null,
@@ -38,8 +39,10 @@ export async function submitApplication(_prev: ApplyState, fd: FormData): Promis
     experience: text(fd, "experience", 120) || null,
     specialties: fd.getAll("specialty").map(String).filter(Boolean).join(", ").slice(0, 300) || null,
     message: text(fd, "message", 2000) || null,
-  });
+  };
+  const { error } = await d.from("photographer_applications").insert(application);
   if (error) return { error: "Could not send your application. Please try again." };
+  await notifyNewApplication(application); // email failures never block the application itself
   revalidatePath("/admin/photographers");
   return { ok: true };
 }
