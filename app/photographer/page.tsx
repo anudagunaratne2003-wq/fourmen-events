@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireRole, getPhotographer } from "@/lib/auth";
 import { db } from "@/lib/supabase/admin";
-import { fmtDate, fmtTime, firstName, lkr, stageLabel, fullyPaid } from "@/lib/format";
+import { fmtDate, fmtTime, firstName, lkr, stageLabel, fullyPaid, SERVICE_FEE_LKR } from "@/lib/format";
 import { portfolioUrl } from "@/lib/storage";
 import { publicName } from "@/lib/reveal";
 import { PortfolioUploader } from "@/components/ActionUploaders";
@@ -9,6 +9,9 @@ import { joinEvent, leaveEvent, createSlots, setSlotStatus, deleteSlot, markShoo
 import { btnSmall, btnSmallDark, h2, input, label } from "@/lib/ui";
 import SubmitButton from "@/components/SubmitButton";
 import BankFields from "@/components/BankFields";
+import PackagePriceField from "@/components/PackagePriceField";
+import Stars from "@/components/Stars";
+import { ratingSummaries, recentReviews } from "@/lib/reviews";
 import TermsDocument from "@/components/TermsDocument";
 import AgreeToTerms from "@/components/AgreeToTerms";
 import { TERMS } from "@/lib/terms";
@@ -55,13 +58,16 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const { data: openEvents } = await d.from("events").select("id, name, university, event_dates").neq("status", "closed").order("created_at", { ascending: false });
   const joinable = (openEvents ?? []).filter((e) => !events.some((x) => x.id === e.id));
 
-  const [{ data: slots }, { data: bookings }, { data: pkgs }, { data: imgs }, { data: bank }] = await Promise.all([
+  const [{ data: slots }, { data: bookings }, { data: pkgs }, { data: imgs }, { data: bank }, ratings, reviews] = await Promise.all([
     ev ? d.from("slots").select("*").eq("event_id", ev.id).eq("photographer_id", p.id).order("slot_date").order("start_time") : Promise.resolve({ data: [] as never[] }),
     d.from("bookings").select("*, events(name, university), slots(slot_date, start_time)").eq("photographer_id", p.id).neq("advance_status", "rejected").order("created_at", { ascending: false }),
     d.from("packages").select("*").eq("photographer_id", p.id).order("price_lkr"),
     d.from("portfolio_images").select("id, path").eq("photographer_id", p.id).order("created_at", { ascending: false }),
     d.from("photographer_bank_accounts").select("bank_name, branch, account_name, account_number, updated_at").eq("photographer_id", p.id).maybeSingle(),
+    ratingSummaries([p.id]),
+    recentReviews(p.id, 50),
   ]);
+  const rating = ratings.get(p.id);
   const dates = [...new Set((slots ?? []).map((s) => s.slot_date))];
 
   return (
@@ -186,6 +192,26 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         )}
       </section>
 
+      {/* ---------- Reviews ---------- */}
+      <section className={sec} id="reviews">
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h2 className="text-xl font-light uppercase tracking-[0.16em]">My reviews</h2>
+          {rating && <Stars value={rating.avg} count={rating.count} />}
+        </div>
+        <p className="mb-4 mt-2 text-sm text-black/55">Clients can rate you once their album is delivered and they have paid in full. Your rating is shown on your public profile.</p>
+        {!reviews.length ? <p className="text-sm text-black/45">No reviews yet.</p> : (
+          <ul className="grid gap-4 md:grid-cols-2">
+            {reviews.map((r) => (
+              <li key={r.id} className={box}>
+                <Stars value={r.rating} showNumber={false} size="text-sm" />
+                {r.comment && <p className="mt-2 whitespace-pre-line text-sm leading-6 text-black/75">{r.comment}</p>}
+                <p className="mt-3 text-xs text-black/45">{r.who} · {fmtDate(r.created_at.slice(0, 10))}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       {/* ---------- Payout details ---------- */}
       <section className={sec} id="payout">
         <h2 className="text-xl font-light uppercase tracking-[0.16em]">Payout details</h2>
@@ -208,7 +234,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <div className="mt-5 grid gap-5 md:grid-cols-2">
           {(pkgs ?? []).map((k) => (
             <details key={k.id} className={box}>
-              <summary className="cursor-pointer text-lg font-light uppercase tracking-[0.1em]">{k.name} <span className="text-[#9b5b2b]">· {lkr(k.price_lkr)}</span></summary>
+              <summary className="cursor-pointer text-lg font-light uppercase tracking-[0.1em]">{k.name} <span className="text-[#9b5b2b]">· {lkr(k.price_lkr)}</span>
+                <span className="block text-xs normal-case tracking-normal text-black/50">You receive {lkr(k.base_price_lkr ?? Math.max(k.price_lkr - SERVICE_FEE_LKR, 0))} · clients see {lkr(k.price_lkr)} (incl. {lkr(SERVICE_FEE_LKR)} Fourmen fee)</span></summary>
               <PackageForm k={k} />
               <form action={deletePackage} className="mt-3"><input type="hidden" name="id" value={k.id} /><SubmitButton className={btnSmall} danger confirm={`Delete the ${k.name} package?`} confirmDetail="Students will no longer be able to choose it. Existing bookings keep their package.">Delete package</SubmitButton></form>
             </details>
@@ -239,12 +266,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   );
 }
 
-function PackageForm({ k }: { k?: { id: string; name: string; price_lkr: number; description: string | null; inclusions: string[] } }) {
+function PackageForm({ k }: { k?: { id: string; name: string; price_lkr: number; base_price_lkr: number | null; description: string | null; inclusions: string[] } }) {
   return (
     <form action={savePackage} className="mt-4 grid gap-3">
       {k && <input type="hidden" name="id" value={k.id} />}
       <div><label className={label}>Name</label><input name="name" required defaultValue={k?.name} className={input} placeholder="e.g. Solo Portrait" /></div>
-      <div><label className={label}>Price (LKR)</label><input name="price" type="number" min={0} required defaultValue={k?.price_lkr} className={input} /></div>
+      <PackagePriceField base={k ? (k.base_price_lkr ?? Math.max(k.price_lkr - SERVICE_FEE_LKR, 0)) : null} idPrefix={k?.id ?? "new"} />
       <div><label className={label}>Short description</label><input name="description" defaultValue={k?.description ?? ""} className={input} /></div>
       <div><label className={label}>What is included (one per line)</label><textarea name="inclusions" rows={5} defaultValue={k?.inclusions.join("\n")} className={input} placeholder={"30-minute session\n25 edited photos\nOnline gallery"} /></div>
       <SubmitButton className={btnSmallDark}>Save package</SubmitButton>

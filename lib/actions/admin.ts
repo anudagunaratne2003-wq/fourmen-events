@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireRole, envAdminEmails } from "@/lib/auth";
 import { db } from "@/lib/supabase/admin";
-import { notifyPhotosReady, notifyPhotographerBooked, notifyPhotographerPaidInFull, notifyApplicationDecision, lastEmailError } from "@/lib/email";
+import { notifyPhotosReady, notifyPhotographerBooked, notifyPhotographerPaidInFull, notifyApplicationDecision, lastEmailError, notifyRevealSchedule, processReveals } from "@/lib/email";
 import { STATUS, isStatus } from "@/lib/events";
 import { lkr, splitPayment, fullyPaid, ADVANCE_LKR } from "@/lib/format";
 import { parseBankForm, saveBankAccount } from "@/lib/bank";
@@ -28,6 +28,7 @@ export async function reviewPayment(fd: FormData) {
         .eq("id", id).eq("advance_status", "pending").select("id");
       if (!won?.length) return back("/admin", "That payment was already reviewed.");
       mailed = await notifyPhotographerBooked(id);
+      await processReveals([id]); // if the reveal date has already passed, share the details now
     } else {
       // Rejected advance: release the slot so someone else can book it.
       await d.from("bookings").update({ advance_status: "rejected", slot_id: null, review_note: note }).eq("id", id);
@@ -74,7 +75,7 @@ export async function saveEvent(fd: FormData) {
   if (!(row.slot_minutes >= 10 && row.slot_minutes <= 240)) return back("/admin/events", "Slot length must be between 10 and 240 minutes.");
 
   const d = db();
-  const { data: before } = id ? await d.from("events").select("advance_lkr, slot_minutes, slug").eq("id", id).maybeSingle() : { data: null };
+  const { data: before } = id ? await d.from("events").select("advance_lkr, slot_minutes, slug, reveal_name_on, reveal_phone_on").eq("id", id).maybeSingle() : { data: null };
   if (id && !before) return back("/admin/events", "Event not found.");
   const { error } = id ? await d.from("events").update(row).eq("id", id) : await d.from("events").insert(row);
   if (error) return back("/admin/events", error.code === "23505" ? "That web address (slug) is already used by another event." : "Could not save the event.");
@@ -85,6 +86,16 @@ export async function saveEvent(fd: FormData) {
   const notes: string[] = [];
   if (before.slot_minutes !== row.slot_minutes) notes.push(`New slots will be ${row.slot_minutes} minutes; slots already created keep their times.`);
   if (before.slug !== row.slug) notes.push(`The event page moved to /graduation/${row.slug}; old shared links will stop working.`);
+  // New reveal dates: tell every confirmed client and their photographer (bookings with their own dates are unaffected).
+  if (before.reveal_name_on !== row.reveal_name_on || before.reveal_phone_on !== row.reveal_phone_on) {
+    const { data: affected } = await d.from("bookings").select("id, reveal_name_on, reveal_phone_on").eq("event_id", id).eq("advance_status", "approved");
+    const ids = (affected ?? []).filter((b) => !b.reveal_name_on || !b.reveal_phone_on).map((b) => b.id);
+    if (ids.length) {
+      await notifyRevealSchedule(ids);
+      await processReveals(ids); // dates already reached are announced straight away
+      notes.push(`Reveal dates changed: ${ids.length} client${ids.length === 1 ? "" : "s"} and their photographers were emailed.`);
+    }
+  }
   await d.from("audit_log").insert({ actor_id: admin.id, action: "event_edited", detail: { event_id: id, before, after: { advance_lkr: row.advance_lkr, slot_minutes: row.slot_minutes, slug: row.slug } } });
   back("/admin/events", [`${row.name} updated.`, ...notes].join(" "));
 }
@@ -191,11 +202,17 @@ export async function setBookingReveal(fd: FormData) {
   const admin = await requireRole("admin");
   const id = String(fd.get("id"));
   const row = { reveal_name_on: isoDate(fd.get("reveal_name_on")), reveal_phone_on: isoDate(fd.get("reveal_phone_on")) };
+  const { data: before } = await db().from("bookings").select("reveal_name_on, reveal_phone_on, advance_status").eq("id", id).maybeSingle();
   const { data } = await db().from("bookings").update(row).eq("id", id).select("ref").maybeSingle();
-  if (!data) return back("/admin", "Booking not found.");
+  if (!data || !before) return back("/admin", "Booking not found.");
   await db().from("audit_log").insert({ actor_id: admin.id, action: "reveal_dates_set", booking_id: id, detail: row });
+  const changed = before.reveal_name_on !== row.reveal_name_on || before.reveal_phone_on !== row.reveal_phone_on;
+  if (changed && before.advance_status === "approved") {
+    await notifyRevealSchedule([id]);
+    await processReveals([id]);
+  }
   revalidatePath("/admin");
-  back("/admin", `${data.ref}: reveal dates saved.`);
+  back("/admin", `${data.ref}: reveal dates saved.${changed && before.advance_status === "approved" ? " The client and photographer were emailed." : ""}`);
 }
 
 /** Sends the "photos ready" email again, e.g. if the client says they never got it. */
@@ -289,4 +306,15 @@ export async function saveBankDetailsAdmin(fd: FormData) {
   if ("error" in r) return back("/admin/photographers", r.error!);
   revalidatePath("/admin/photographers");
   back("/admin/photographers", r.changed ? `${ph.display_name}: payout details saved and the photographer was notified.` : `${ph.display_name}: no changes to save.`);
+}
+
+/** Hide an abusive or irrelevant review (or show it again). Hidden reviews do not count towards the rating. */
+export async function setReviewHidden(fd: FormData) {
+  const admin = await requireRole("admin");
+  const id = String(fd.get("id")), hidden = String(fd.get("hidden")) === "true";
+  const { data } = await db().from("reviews").update({ hidden }).eq("id", id).select("id").maybeSingle();
+  if (!data) return back("/admin/photographers", "Review not found.");
+  await db().from("audit_log").insert({ actor_id: admin.id, action: hidden ? "review_hidden" : "review_shown", detail: { review_id: id } });
+  revalidatePath("/admin/photographers"); revalidatePath("/graduation", "layout");
+  back("/admin/photographers", hidden ? "Review hidden. It no longer counts towards the rating." : "Review is visible again.");
 }

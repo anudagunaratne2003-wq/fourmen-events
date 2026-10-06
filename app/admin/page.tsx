@@ -1,5 +1,5 @@
 import { db } from "@/lib/supabase/admin";
-import { fmtDate, fmtTime, lkr, stageLabel, balanceOf, fullyPaid } from "@/lib/format";
+import { fmtDate, fmtTime, lkr, stageLabel, balanceOf, fullyPaid, photographerPayout } from "@/lib/format";
 import { isImage } from "@/lib/storage";
 import { reviewPayment, setBookingReveal, resendPhotosEmail, adjustBookingAmounts, markFullyPaid, resendPhotographerEmail } from "@/lib/actions/admin";
 import { revealFor, publicName } from "@/lib/reveal";
@@ -101,8 +101,12 @@ function RevealCell({ b }: { b: { id: string; advance_status: string; reveal_nam
   );
 }
 
-function AmountsCell({ b }: { b: { id: string; package_price: number; advance_lkr: number; balance_status: string } }) {
-  const summary = <span className="block text-xs text-black/50">{lkr(b.package_price)} − {lkr(b.advance_lkr)} adv = <b className="font-medium text-black/70">{lkr(balanceOf(b))}</b> balance</span>;
+function AmountsCell({ b }: { b: { id: string; package_price: number; advance_lkr: number; package_base_price: number | null; balance_status: string } }) {
+  const pay = photographerPayout(b.package_price, b.advance_lkr, b.package_base_price);
+  const summary = <>
+    <span className="block text-xs text-black/50">{lkr(b.package_price)} − {lkr(b.advance_lkr)} adv = <b className="font-medium text-black/70">{lkr(balanceOf(b))}</b> balance</span>
+    <span className="block text-xs text-black/50" title="What to transfer to the photographer">Pay photographer {lkr(pay.total)}: {lkr(pay.fromAdvance)} after advance + {lkr(pay.fromBalance)} after balance</span>
+  </>;
   if (b.balance_status === "approved") return summary;
   return (
     <details className="mt-1 text-xs">

@@ -2,6 +2,17 @@ export const lkr = (n: number) => "LKR " + Number(n).toLocaleString("en-US");
 
 /** Every booking takes the same fixed advance (Photographer Terms, clause 4.1). Change it here only. */
 export const ADVANCE_LKR = 4000;
+
+/** Fourmen's service fee, added on top of every photographer's own package price (Terms, clause 3.2). */
+export const SERVICE_FEE_LKR = 2000;
+
+/** What the photographer receives for a booking: everything the client pays except the Fourmen fee.
+ *  Paid out in two parts: their share of the advance once it is verified, then the full balance. */
+export function photographerPayout(packagePrice: number, advance: number, base?: number | null) {
+  const total = base ?? Math.max(packagePrice - SERVICE_FEE_LKR, 0);
+  const fromAdvance = Math.max(Math.min(advance, packagePrice) - SERVICE_FEE_LKR, 0);
+  return { total, fromAdvance, fromBalance: Math.max(total - fromAdvance, 0) };
+}
 export const fmtDate = (d: string) =>
   new Date(d + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 export const fmtTime = (t: string) => {

@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { getUser } from "@/lib/auth";
 import { db } from "@/lib/supabase/admin";
-import { splitPayment, balanceOf, ADVANCE_LKR } from "@/lib/format";
+import { splitPayment, balanceOf, ADVANCE_LKR, SERVICE_FEE_LKR } from "@/lib/format";
 import { notifyAdminsPaymentToReview } from "@/lib/email";
 
 const REF_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -48,6 +48,7 @@ export async function createBooking(i: BookingInput): Promise<{ id?: string; err
       package_id: pkg.id, slot_id: i.slotId, client_name: name, client_phone: phone, client_email: email,
       degree: i.degree.trim(), notes: i.notes.trim() || null,
       package_name: pkg.name, package_price: pay.total, advance_lkr: pay.advance,
+      package_base_price: pkg.base_price_lkr ?? Math.max(pkg.price_lkr - SERVICE_FEE_LKR, 0),
       balance_lkr: pay.balance, advance_proof_path: i.proofPath,
     }).select("id").single();
     if (row) {

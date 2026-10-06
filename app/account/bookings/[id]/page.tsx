@@ -8,7 +8,11 @@ import { publicName, revealFor } from "@/lib/reveal";
 import { waLink } from "@/lib/services";
 import { BalanceUploader } from "@/components/ActionUploaders";
 import CopyButton from "@/components/CopyButton";
-import { h2 } from "@/lib/ui";
+import Stars from "@/components/Stars";
+import StarInput from "@/components/StarInput";
+import SubmitButton from "@/components/SubmitButton";
+import { submitReview } from "@/lib/actions/reviews";
+import { btnSmallDark, h2, input as inputCls } from "@/lib/ui";
 
 export const metadata: Metadata = { title: "Booking" };
 
@@ -24,6 +28,8 @@ export default async function BookingPage({ params, searchParams }: { params: Pr
   const balance = balanceOf(b), paid = fullyPaid(b);
   // The album link is only read out when the client has paid in full, so it never reaches the browser earlier.
   const album = paid && b.album_url ? { url: b.album_url as string, note: b.album_note as string | null } : null;
+  // Reviews open once the photos are delivered and the booking is paid in full.
+  const { data: review } = album ? await d.from("reviews").select("rating, comment, updated_at").eq("booking_id", b.id).maybeSingle() : { data: null };
 
   const adv = b.advance_status, bal = b.balance_status;
   // Real name and phone are rendered on the server only once revealed, so they never reach the browser early.
@@ -126,6 +132,33 @@ export default async function BookingPage({ params, searchParams }: { params: Pr
           ) : (
             <p className="text-sm text-black/55">Your photographer is still editing your photos. We will email you as soon as your album is ready.</p>
           )}
+        </section>
+      )}
+
+      {album && (
+        <section className="mt-10" id="review">
+          <h2 className="mb-2 text-xl font-light uppercase tracking-[0.16em]">Rate your photographer</h2>
+          <p className="mb-5 text-sm text-black/55">How was your experience with {photographer}? Your rating and comment are shown on their profile with your first name.</p>
+          {review && (
+            <div className="mb-5 border border-[#dbcfc1] bg-[#f8f4ef] p-5">
+              <p className="text-[10px] uppercase tracking-[0.3em] text-[#9b5b2b]">Your review</p>
+              <div className="mt-2"><Stars value={review.rating} showNumber={false} size="text-xl" /></div>
+              {review.comment && <p className="mt-2 whitespace-pre-line text-sm text-black/70">{review.comment}</p>}
+            </div>
+          )}
+          <details open={!review} className="border border-black/10 bg-white p-5">
+            <summary className="cursor-pointer text-xs uppercase tracking-[0.2em] text-black/60">{review ? "Edit your review" : "Write a review"}</summary>
+            <form action={submitReview} className="mt-4 grid gap-4">
+              <input type="hidden" name="booking_id" value={b.id} />
+              <StarInput defaultValue={review?.rating ?? 0} />
+              <div>
+                <label className="mb-1 block text-xs text-black/55" htmlFor="review-comment">Your feedback (optional)</label>
+                <textarea id="review-comment" name="comment" rows={4} maxLength={1000} defaultValue={review?.comment ?? ""} className={inputCls}
+                  placeholder="What did you like? Was the photographer on time, friendly, and happy with the edits?" />
+              </div>
+              <div><SubmitButton className={btnSmallDark} pendingText="Sending…">{review ? "Update review" : "Submit review"}</SubmitButton></div>
+            </form>
+          </details>
         </section>
       )}
     </main>

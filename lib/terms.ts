@@ -28,7 +28,7 @@ export const TERMS = {
       title: "Packages and pricing",
       clauses: [
         "You set your own package prices.",
-        "You must add LKR 2,000 to every package price as the Fourmen service charge. Example: if you want to receive LKR 18,000, the package is listed at LKR 20,000.",
+        "A Fourmen service fee of LKR 2,000 is added to every package price you set, and clients see the combined price. Example: if you set LKR 18,000, the package is listed at LKR 20,000 and you receive LKR 18,000.",
       ],
     },
     {

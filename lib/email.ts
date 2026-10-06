@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "@/lib/supabase/admin";
 import { firstName, fullyPaid, fmtDate, fmtTime, lkr } from "@/lib/format";
 import { envAdminEmails } from "@/lib/auth";
+import { publicName, revealFor } from "@/lib/reveal";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/+$/, "");
@@ -67,6 +68,7 @@ export async function notifyPhotosReady(bookingId: string) {
   <p>Thank you for your payment. Your edited photo album${event ? ` from <b>${esc(event)}</b>` : ""} is ready.</p>
   <p style="margin:28px 0"><a href="${link}" style="background:#000;color:#fff;text-decoration:none;padding:14px 24px;font-size:12px;letter-spacing:.2em;text-transform:uppercase">Open your album</a></p>
   <p style="font-size:13px;color:#6b5a4d">Sign in with this email address and open your booking to find the album link. Please download and save your photos soon, as the album will not be kept online forever.</p>
+  <p style="font-size:13px;color:#6b5a4d">Happy with your photos? You can rate your photographer on the same page. It helps other graduates choose.</p>
   <p style="font-size:13px;color:#6b5a4d">Booking reference: ${esc(b.ref)}</p>
 </div>`;
   const text = `Hi ${firstName(b.client_name) || "there"},\n\nYour edited photo album${event ? ` from ${event}` : ""} is ready.\nOpen your booking to get the album link: ${link}\n\nSign in with this email address. Please download and save your photos soon. Booking reference: ${b.ref}\n\nFourmen Events`;
@@ -262,4 +264,113 @@ export async function notifyBankDetailsChanged(
     { href: `${siteUrl()}/photographer#payout`, label: "Check your payout details" });
   const text = `${hi}\n\n${who} payout bank details ${byAdmin ? "for you" : "were just updated"}. Fourmen Events will send your earnings to:\n${row.bank_name}, ${row.branch}\n${row.account_name}\nAccount ${masked}\n\nIf you did not make this change, reply to this email or message Fourmen Events right away, and change your password.\n\nFourmen Events`;
   return sendEmail(ph.email, "Your payout details were updated", html, text);
+}
+
+/** Lets the photographer know a client left a review. */
+export async function notifyNewReview(bookingId: string) {
+  const { data: b } = await db().from("bookings")
+    .select("ref, client_name, photographers(email, display_name), reviews(rating, comment)")
+    .eq("id", bookingId).maybeSingle();
+  const ph = b?.photographers as unknown as { email: string; display_name: string } | null;
+  const r = (b?.reviews as unknown as { rating: number; comment: string | null }[] | { rating: number; comment: string | null } | null);
+  const review = Array.isArray(r) ? r[0] : r;
+  if (!b || !ph?.email || !review) return false;
+  const stars = "★".repeat(review.rating) + "☆".repeat(5 - review.rating);
+  const client = firstName(b.client_name) || "Your client";
+  const html = emailLayout(b.ref, "New review", `<p>Hi ${esc(firstName(ph.display_name) || "there")},</p>
+  <p>${esc(client)} rated your work:</p>
+  <p style="font-size:24px;color:#c8891f;letter-spacing:2px;margin:8px 0">${stars}</p>
+  ${review.comment ? `<p style="white-space:pre-line;border-left:3px solid #dbcfc1;padding-left:12px;color:#3d2c20">${esc(review.comment)}</p>` : ""}`,
+    { href: `${siteUrl()}/photographer#reviews`, label: "See your reviews" });
+  const text = `Hi ${firstName(ph.display_name) || "there"},\n\n${client} rated your work ${review.rating}/5.${review.comment ? `\n\n"${review.comment}"` : ""}\n\nYour reviews: ${siteUrl()}/photographer#reviews\n\nFourmen Events`;
+  return sendEmail(ph.email, `New ${review.rating}-star review (${b.ref})`, html, text);
+}
+
+// ---------- Photographer identity reveal notices (Terms, clause 5) ----------
+
+type RevealRow = {
+  id: string; ref: string; client_name: string; client_email: string; advance_status: string;
+  reveal_name_on: string | null; reveal_phone_on: string | null;
+  name_reveal_emailed_for: string | null; phone_reveal_emailed_for: string | null;
+  events: { name: string; university: string; reveal_name_on: string | null; reveal_phone_on: string | null } | null;
+  photographers: { id: string; email: string; display_name: string; alias: string | null; contact_phone: string | null } | null;
+};
+const REVEAL_SELECT = "id, ref, client_name, client_email, advance_status, reveal_name_on, reveal_phone_on, name_reveal_emailed_for, phone_reveal_emailed_for, events(name, university, reveal_name_on, reveal_phone_on), photographers(id, email, display_name, alias, contact_phone)";
+
+async function revealRows(bookingIds?: string[]) {
+  let q = db().from("bookings").select(REVEAL_SELECT).eq("advance_status", "approved");
+  if (bookingIds) q = q.in("id", bookingIds.length ? bookingIds : ["00000000-0000-0000-0000-000000000000"]);
+  const { data } = await q;
+  return (data ?? []) as unknown as RevealRow[];
+}
+const when = (d: string | null) => (d ? fmtDate(d) : "a date to be confirmed");
+
+/** Admin set or changed reveal dates: tell the client and photographer when details will be shared. */
+export async function notifyRevealSchedule(bookingIds: string[]) {
+  for (const b of await revealRows(bookingIds)) {
+    const ph = b.photographers;
+    if (!ph) continue;
+    const r = revealFor(b, b.events);
+    if (r.name && r.phone) continue; // already fully revealed: the reveal notice covers it
+    const stage = publicName(ph), event = [b.events?.university, b.events?.name].filter(Boolean).join(" · ");
+    const client = firstName(b.client_name) || "your client";
+
+    const cBody = `<p>Hi ${esc(firstName(b.client_name) || "there")},</p>
+  <p>Here is when your photographer's details will be shared for your booking${event ? ` (${esc(event)})` : ""}:</p>
+  <p style="background:#f8f4ef;border:1px solid #dbcfc1;padding:12px 16px">Name: ${esc(r.name ? "already shared" : when(r.nameOn))}<br>Phone number: ${esc(r.phone ? "already shared" : when(r.phoneOn))}</p>
+  <p>Until then your photographer appears as <b>${esc(stage)}</b>, and Fourmen Events coordinates with them for you. We will email you again when the details are shared.</p>`;
+    await sendEmail(b.client_email, `When you'll get your photographer's details (${b.ref})`,
+      emailLayout(b.ref, "Photographer details", cBody, { href: `${siteUrl()}/account/bookings/${b.id}`, label: "View your booking" }),
+      `Hi ${firstName(b.client_name) || "there"},\n\nYour photographer's details for ${b.ref}${event ? ` (${event})` : ""} will be shared:\nName: ${r.name ? "already shared" : when(r.nameOn)}\nPhone number: ${r.phone ? "already shared" : when(r.phoneOn)}\n\nUntil then your photographer appears as ${stage}. We will email you again when the details are shared.\n\nFourmen Events`);
+
+    const pBody = `<p>Hi ${esc(firstName(ph.display_name) || "there")},</p>
+  <p>Your details will be shared with ${esc(client)} (${esc(b.ref)}${event ? `, ${esc(event)}` : ""}) on these dates:</p>
+  <p style="background:#f8f4ef;border:1px solid #dbcfc1;padding:12px 16px">Your name: ${esc(r.name ? "already shared" : when(r.nameOn))}<br>Your phone number: ${esc(r.phone ? "already shared" : when(r.phoneOn))}</p>`;
+    await sendEmail(ph.email, `Reveal dates set for ${b.ref}`,
+      emailLayout(b.ref, "Reveal dates", pBody, { href: `${siteUrl()}/photographer#bookings`, label: "Open your dashboard" }),
+      `Hi ${firstName(ph.display_name) || "there"},\n\nYour details will be shared with ${client} (${b.ref}${event ? `, ${event}` : ""}):\nYour name: ${r.name ? "already shared" : when(r.nameOn)}\nYour phone number: ${r.phone ? "already shared" : when(r.phoneOn)}\n\nFourmen Events`);
+  }
+}
+
+/** Sends the "details are now shared" emails for reveals that are due and not yet announced.
+ *  Run daily by the cron job, and right after admins change dates or approve an advance. */
+export async function processReveals(bookingIds?: string[]) {
+  let sent = 0;
+  for (const b of await revealRows(bookingIds)) {
+    const ph = b.photographers;
+    if (!ph) continue;
+    const r = revealFor(b, b.events);
+    const nameDue = r.name && r.nameOn && b.name_reveal_emailed_for !== r.nameOn ? r.nameOn : null;
+    // If only the phone date was set, the name is shared with it.
+    const nameDueViaPhone = r.name && !r.nameOn && r.phoneOn && b.name_reveal_emailed_for !== r.phoneOn ? r.phoneOn : null;
+    const phoneDue = r.phone && r.phoneOn && b.phone_reveal_emailed_for !== r.phoneOn ? r.phoneOn : null;
+    const newName = nameDue ?? nameDueViaPhone;
+    if (!newName && !phoneDue) continue;
+
+    const event = [b.events?.university, b.events?.name].filter(Boolean).join(" · ");
+    const phone = r.phone ? ph.contact_phone : null;
+    const client = firstName(b.client_name) || "your client";
+    const cBody = `<p>Hi ${esc(firstName(b.client_name) || "there")},</p>
+  <p>As your shoot${event ? ` (${esc(event)})` : ""} is coming up, here are your photographer's details:</p>
+  <p style="background:#f8f4ef;border:1px solid #dbcfc1;padding:12px 16px">Photographer: <b>${esc(ph.display_name)}</b> (shown so far as ${esc(publicName(ph))})${phone ? `<br>Phone: <b>${esc(phone)}</b>` : `<br>Phone number: ${esc(when(r.phoneOn))}`}</p>
+  <p>You can now contact your photographer directly. Fourmen Events is still here if you need any help.</p>`;
+    const ok = await sendEmail(b.client_email, `Your photographer's details (${b.ref})`,
+      emailLayout(b.ref, "Meet your photographer", cBody, { href: `${siteUrl()}/account/bookings/${b.id}`, label: "View your booking" }),
+      `Hi ${firstName(b.client_name) || "there"},\n\nYour photographer for ${b.ref}${event ? ` (${event})` : ""} is ${ph.display_name} (shown so far as ${publicName(ph)}).${phone ? `\nPhone: ${phone}` : `\nPhone number: ${when(r.phoneOn)}`}\n\nYou can now contact your photographer directly.\n\nFourmen Events`);
+
+    await sendEmail(ph.email, `Your details are now shared with ${client} (${b.ref})`,
+      emailLayout(b.ref, "Details shared with your client", `<p>Hi ${esc(firstName(ph.display_name) || "there")},</p>
+  <p>Your ${phone ? "name and phone number are" : "name is"} now visible to ${esc(client)} for ${esc(b.ref)}${event ? ` (${esc(event)})` : ""}, so they may contact you directly. Please keep handling the booking professionally and through Fourmen where needed.</p>`,
+        { href: `${siteUrl()}/photographer#bookings`, label: "Open your dashboard" }),
+      `Hi ${firstName(ph.display_name) || "there"},\n\nYour ${phone ? "name and phone number are" : "name is"} now visible to ${client} for ${b.ref}${event ? ` (${event})` : ""}, so they may contact you directly.\n\nFourmen Events`);
+
+    if (ok) {
+      await db().from("bookings").update({
+        ...(newName ? { name_reveal_emailed_for: newName } : {}),
+        ...(phoneDue ? { phone_reveal_emailed_for: phoneDue } : {}),
+      }).eq("id", b.id);
+      sent++;
+    }
+  }
+  return sent;
 }

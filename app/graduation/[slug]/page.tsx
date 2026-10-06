@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { db } from "@/lib/supabase/admin";
 import { publicName } from "@/lib/reveal";
+import { ratingSummaries } from "@/lib/reviews";
+import Stars from "@/components/Stars";
 import { portfolioUrl } from "@/lib/storage";
 import { fmtDate, lkr, ADVANCE_LKR } from "@/lib/format";
 import { eyebrow, h1 } from "@/lib/ui";
@@ -20,6 +22,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     d.from("portfolio_images").select("photographer_id, path").in("photographer_id", ids).order("created_at", { ascending: false }),
     d.from("slots").select("photographer_id").eq("event_id", ev.id).eq("status", "open").gte("slot_date", new Date().toISOString().slice(0, 10)),
   ]);
+  const ratings = await ratingSummaries((phs ?? []).map((p) => p.id));
 
   return (
     <main className="bg-white text-black">
@@ -59,6 +62,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                     ))}
                   </div>
                   <h3 className="mt-5 text-xl font-light uppercase tracking-[0.12em]">{publicName(p)}</h3>
+                  <div className="mt-1 text-sm">{ratings.get(p.id) ? <Stars value={ratings.get(p.id)!.avg} count={ratings.get(p.id)!.count} size="text-sm" /> : <span className="text-xs text-black/40">No reviews yet</span>}</div>
                   <p className="mt-1 flex-1 text-sm text-black/55">{p.style}</p>
                   <p className="mt-4 text-sm text-black/65">
                     {mine.length ? `From ${lkr(Math.min(...mine.map((k) => k.price_lkr)))} · ${mine.length} package${mine.length > 1 ? "s" : ""}` : "Packages coming soon"}

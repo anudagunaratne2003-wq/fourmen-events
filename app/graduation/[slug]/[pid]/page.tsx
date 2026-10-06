@@ -3,11 +3,13 @@ import Link from "next/link";
 import { db } from "@/lib/supabase/admin";
 import { getUser } from "@/lib/auth";
 import { portfolioUrl } from "@/lib/storage";
-import { lkr, ADVANCE_LKR } from "@/lib/format";
+import { lkr, ADVANCE_LKR, fmtDate } from "@/lib/format";
 import Gallery from "@/components/Gallery";
 import BookingFlow from "@/components/BookingFlow";
 import { eyebrow, h1 } from "@/lib/ui";
 import { publicName } from "@/lib/reveal";
+import { ratingSummaries, recentReviews } from "@/lib/reviews";
+import Stars from "@/components/Stars";
 import { STATUS, VISIBLE, type EventStatus } from "@/lib/events";
 
 export default async function PhotographerPage({ params }: { params: Promise<{ slug: string; pid: string }> }) {
@@ -21,12 +23,15 @@ export default async function PhotographerPage({ params }: { params: Promise<{ s
 
   const name = publicName(ph); // real names stay private until the admin reveals them per booking
   const today = new Date().toISOString().slice(0, 10);
-  const [{ data: imgs }, { data: pkgs }, { data: slots }, user] = await Promise.all([
+  const [{ data: imgs }, { data: pkgs }, { data: slots }, user, ratings, reviews] = await Promise.all([
     d.from("portfolio_images").select("path, caption").eq("photographer_id", pid).order("created_at", { ascending: false }),
     d.from("packages").select("*").eq("photographer_id", pid).eq("active", true).order("price_lkr"),
     d.from("slots").select("id, slot_date, start_time").eq("event_id", ev.id).eq("photographer_id", pid).eq("status", "open").gte("slot_date", today).order("slot_date").order("start_time"),
     getUser(),
+    ratingSummaries([pid]),
+    recentReviews(pid),
   ]);
+  const rating = ratings.get(pid);
 
   return (
     <main className="bg-white text-black">
@@ -36,6 +41,7 @@ export default async function PhotographerPage({ params }: { params: Promise<{ s
           <p className={`${eyebrow} mt-6`}>Photographer</p>
           <h1 className={`${h1} mt-4`}>{name}</h1>
           {ph.style && <p className="mt-3 text-sm text-black/60">{ph.style}</p>}
+          <div className="mt-3">{rating ? <a href="#reviews" className="hover:opacity-80"><Stars value={rating.avg} count={rating.count} /></a> : <span className="text-sm text-black/45">No reviews yet</span>}</div>
           {ph.bio && <p className="mt-4 max-w-2xl text-sm leading-7 text-black/60">{ph.bio}</p>}
         </div>
       </section>
@@ -44,6 +50,24 @@ export default async function PhotographerPage({ params }: { params: Promise<{ s
         <h2 className="mb-6 text-xl font-light uppercase tracking-[0.18em] md:text-2xl">Portfolio</h2>
         <Gallery name={name} images={(imgs ?? []).map((i) => ({ url: portfolioUrl(i.path), caption: i.caption }))} />
       </section>
+
+      {reviews.length > 0 && (
+        <section className="mx-auto max-w-6xl px-5 pb-14 md:px-12" id="reviews">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 className="text-xl font-light uppercase tracking-[0.18em] md:text-2xl">Reviews</h2>
+            {rating && <Stars value={rating.avg} count={rating.count} />}
+          </div>
+          <ul className="mt-6 grid gap-4 md:grid-cols-2">
+            {reviews.map((r) => (
+              <li key={r.id} className="border border-[#dbcfc1] bg-[#f8f4ef] p-5">
+                <Stars value={r.rating} showNumber={false} size="text-sm" />
+                {r.comment && <p className="mt-2 whitespace-pre-line text-sm leading-6 text-black/75">{r.comment}</p>}
+                <p className="mt-3 text-xs text-black/45">{r.who} · {fmtDate(r.created_at.slice(0, 10))}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="border-t border-black/10 bg-white px-5 py-14 md:px-12 md:py-20">
         <div className="mx-auto max-w-6xl">

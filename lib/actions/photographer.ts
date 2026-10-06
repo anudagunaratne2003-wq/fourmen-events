@@ -6,7 +6,7 @@ import { requireRole, getPhotographer } from "@/lib/auth";
 import { db } from "@/lib/supabase/admin";
 import { notifyPhotosReady } from "@/lib/email";
 import { parseBankForm, saveBankAccount } from "@/lib/bank";
-import { balanceOf } from "@/lib/format";
+import { balanceOf, SERVICE_FEE_LKR } from "@/lib/format";
 import { TERMS, termsHash, termsText } from "@/lib/terms";
 
 const back = (msg: string, event?: string): never =>
@@ -151,17 +151,18 @@ export async function saveAlbumLink(fd: FormData) {
 export async function savePackage(fd: FormData) {
   const p = await me();
   const id = String(fd.get("id") || ""), name = String(fd.get("name")).trim();
-  const price = Math.round(Number(fd.get("price")));
-  if (!name || !(price >= 0)) return back("Give the package a name and a price.");
+  // The photographer enters their own price; the Fourmen fee is always added here, on the server.
+  const base = Math.round(Number(fd.get("base_price")));
+  if (!name || !(base >= 0)) return back("Give the package a name and your price.");
   const row = {
-    photographer_id: p.id, name, price_lkr: price, description: String(fd.get("description") || "").trim() || null,
+    photographer_id: p.id, name, base_price_lkr: base, price_lkr: base + SERVICE_FEE_LKR, description: String(fd.get("description") || "").trim() || null,
     inclusions: String(fd.get("inclusions") || "").split("\n").map((s) => s.trim()).filter(Boolean),
   };
   const d = db();
   if (id) await d.from("packages").update(row).eq("id", id).eq("photographer_id", p.id);
   else await d.from("packages").insert(row);
   revalidatePath("/photographer");
-  back("Package saved.");
+  back(`Package saved. Clients see LKR ${(base + SERVICE_FEE_LKR).toLocaleString("en-US")} and you receive LKR ${base.toLocaleString("en-US")}.`);
 }
 
 export async function deletePackage(fd: FormData) {

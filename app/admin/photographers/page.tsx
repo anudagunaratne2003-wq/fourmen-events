@@ -1,5 +1,5 @@
 import { db } from "@/lib/supabase/admin";
-import { createPhotographer, togglePhotographer, reviewApplication, setPhotographerAlias, saveBankDetailsAdmin } from "@/lib/actions/admin";
+import { createPhotographer, togglePhotographer, reviewApplication, setPhotographerAlias, saveBankDetailsAdmin, setReviewHidden } from "@/lib/actions/admin";
 import { publicName } from "@/lib/reveal";
 import { fmtDate, fmtDateTimeLK } from "@/lib/format";
 import { TERMS } from "@/lib/terms";
@@ -7,6 +7,8 @@ import { btnSmall, btnSmallDark, h2, input, label } from "@/lib/ui";
 import SubmitButton from "@/components/SubmitButton";
 import BankFields from "@/components/BankFields";
 import CopyButton from "@/components/CopyButton";
+import Stars from "@/components/Stars";
+import { ratingSummaries } from "@/lib/reviews";
 
 export default async function PhotographersAdmin() {
   const d = db();
@@ -16,6 +18,12 @@ export default async function PhotographersAdmin() {
     d.from("photographer_bank_accounts").select("photographer_id, bank_name, branch, account_name, account_number, updated_at"),
   ]);
   const bankOf = (id: string) => (banks ?? []).find((b) => b.photographer_id === id) ?? null;
+  const ids = (phs ?? []).map((p) => p.id);
+  const [ratings, { data: allReviews }] = await Promise.all([
+    ratingSummaries(ids),
+    d.from("reviews").select("id, photographer_id, rating, comment, hidden, created_at, bookings(ref, client_name)").in("photographer_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]).order("created_at", { ascending: false }),
+  ]);
+  const reviewsOf = (id: string) => (allReviews ?? []).filter((r) => r.photographer_id === id);
   return (
     <>
       <h1 className={h2}>Photographers</h1>
@@ -75,6 +83,29 @@ export default async function PhotographersAdmin() {
               </p></div>
             <form action={setPhotographerAlias} className="flex gap-2"><input type="hidden" name="id" value={p.id} /><input name="alias" maxLength={60} defaultValue={p.alias ?? ""} placeholder="Stage name" aria-label={`Stage name for ${p.display_name}`} className={`${input} py-2!`} /><SubmitButton className={btnSmall}>Save</SubmitButton></form>
             <form action={togglePhotographer}><input type="hidden" name="id" value={p.id} /><input type="hidden" name="active" value={String(!p.active)} /><SubmitButton className={btnSmall}>{p.active ? "Hide" : "Show"}</SubmitButton></form>
+          </div>
+          <div className="mt-3 border-t border-black/10 pt-3">
+            {ratings.get(p.id) ? <Stars value={ratings.get(p.id)!.avg} count={ratings.get(p.id)!.count} size="text-sm" /> : <span className="text-xs text-black/40">No reviews yet</span>}
+            {reviewsOf(p.id).length > 0 && (
+              <details className="mt-1">
+                <summary className="cursor-pointer text-xs text-black/55 underline">Reviews ({reviewsOf(p.id).length})</summary>
+                <ul className="mt-2 divide-y divide-black/10 border border-black/10">
+                  {reviewsOf(p.id).map((r) => {
+                    const bk = r.bookings as unknown as { ref: string; client_name: string } | null;
+                    return (
+                      <li key={r.id} className={`flex flex-wrap items-start justify-between gap-3 px-3 py-2 ${r.hidden ? "opacity-50" : ""}`}>
+                        <div className="min-w-0">
+                          <Stars value={r.rating} showNumber={false} size="text-xs" /> <span className="text-xs text-black/45">{bk?.client_name} · {bk?.ref} · {fmtDate(r.created_at.slice(0, 10))}{r.hidden && " · hidden"}</span>
+                          {r.comment && <p className="mt-1 whitespace-pre-line text-xs text-black/70">{r.comment}</p>}
+                        </div>
+                        <form action={setReviewHidden}><input type="hidden" name="id" value={r.id} /><input type="hidden" name="hidden" value={String(!r.hidden)} />
+                          <SubmitButton className="text-xs underline text-black/55" confirm={r.hidden ? undefined : "Hide this review?"} confirmDetail="It will no longer show on the profile or count towards the rating.">{r.hidden ? "Show" : "Hide"}</SubmitButton></form>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </details>
+            )}
           </div>
           <div className="mt-3 border-t border-black/10 pt-3">
             {bank ? (
