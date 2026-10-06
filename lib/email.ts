@@ -179,3 +179,32 @@ export async function notifyApplicationDecision(a: { name: string; email: string
     emailLayout("", "Thank you for applying", `<p>${esc(hi)}</p><p>Thank you for your interest in working with Fourmen Events. We are not able to take your application forward at the moment, but we appreciate you sharing your work and wish you all the best.</p>`),
     `${hi}\n\nThank you for your interest in working with Fourmen Events. We are not able to take your application forward at the moment, but we appreciate you sharing your work and wish you all the best.\n\nFourmen Events`);
 }
+
+/** Tells the photographer the client has paid in full (balance approved or marked as paid by an admin),
+ *  and reminds them to add the album link if it is still missing. Returns whether the email went out. */
+export async function notifyPhotographerPaidInFull(bookingId: string) {
+  const d = db();
+  const { data: b } = await d.from("bookings")
+    .select("id, ref, client_name, package_name, package_price, advance_lkr, album_url, events(id, name, university), slots(slot_date, start_time), photographers(email, display_name)")
+    .eq("id", bookingId).maybeSingle();
+  const ph = b?.photographers as unknown as { email: string; display_name: string } | null;
+  if (!b || !ph?.email) return false;
+  const ev = b.events as unknown as { id: string; name: string; university: string } | null;
+  const slot = b.slots as unknown as { slot_date: string; start_time: string } | null;
+  const client = firstName(b.client_name) || "Your client"; // photographers only ever see the client's first name
+  const balance = Math.max(b.package_price - b.advance_lkr, 0);
+  const link = `${siteUrl()}/photographer${ev ? `?event=${ev.id}` : ""}#bookings`;
+  const shoot = [ev?.university, ev?.name, slot ? `${fmtDate(slot.slot_date)}, ${fmtTime(slot.start_time)}` : ""].filter(Boolean).join(" · ");
+  const next = b.album_url
+    ? "Your album link is already saved, so the client can now open their photos."
+    : "Next step: add the share link to the edited album in your dashboard. The client sees it as soon as you save it.";
+
+  const html = emailLayout(b.ref, "Paid in full", `<p>Hi ${esc(firstName(ph.display_name) || "there")},</p>
+  <p>${esc(client)} has paid the remaining balance${balance ? ` of <b>${esc(lkr(balance))}</b>` : ""}, so the ${esc(b.package_name)} package (${esc(lkr(b.package_price))}) is now <b>paid in full</b>.</p>
+  ${shoot ? `<p style="color:#6b5a4d">${esc(shoot)}</p>` : ""}
+  <p>${esc(next)}</p>
+  <p style="font-size:13px;color:#6b5a4d">Booking reference: ${esc(b.ref)}</p>`, { href: link, label: b.album_url ? "Open your dashboard" : "Add the album link" });
+  const text = `Hi ${firstName(ph.display_name) || "there"},\n\n${client} has paid the remaining balance${balance ? ` of ${lkr(balance)}` : ""}, so the ${b.package_name} package (${lkr(b.package_price)}) is now paid in full.\n${shoot ? `${shoot}\n` : ""}\n${next}\n\nYour dashboard: ${link}\nBooking reference: ${b.ref}\n\nFourmen Events`;
+
+  return sendEmail(ph.email, `Paid in full: ${b.ref}${b.album_url ? "" : " (please add the album link)"}`, html, text);
+}
