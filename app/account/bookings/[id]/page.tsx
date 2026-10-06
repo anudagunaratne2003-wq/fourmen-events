@@ -7,6 +7,7 @@ import { fmtDate, fmtTime, lkr, balanceOf, fullyPaid } from "@/lib/format";
 import { publicName, revealFor } from "@/lib/reveal";
 import { waLink } from "@/lib/services";
 import { BalanceUploader } from "@/components/ActionUploaders";
+import CopyButton from "@/components/CopyButton";
 import { h2 } from "@/lib/ui";
 
 export const metadata: Metadata = { title: "Booking" };
@@ -17,7 +18,7 @@ export default async function BookingPage({ params, searchParams }: { params: Pr
   const user = await requireUser(`/account/bookings/${id}`);
   const d = db();
   const { data: b } = await d.from("bookings")
-    .select("*, events(name, university, venue, reveal_name_on, reveal_phone_on), slots(slot_date, start_time), photographers(id, alias, display_name, contact_phone)")
+    .select("*, events(name, university, venue, payment_instructions, reveal_name_on, reveal_phone_on), slots(slot_date, start_time), photographers(id, alias, display_name, contact_phone)")
     .eq("id", id).eq("client_id", user.id).maybeSingle();
   if (!b) notFound();
   const balance = balanceOf(b), paid = fullyPaid(b);
@@ -91,8 +92,23 @@ export default async function BookingPage({ params, searchParams }: { params: Pr
           <p className="mt-1 text-sm text-white/55">Package {lkr(b.package_price)} − advance paid {lkr(b.advance_lkr)}</p>
           <p className="mt-3 text-sm leading-7 text-white/65">
             {b.shoot_done ? "Your shoot is done." : "You can pay now or after your shoot, whichever your photographer agreed with you."}{" "}
-            Transfer the balance using the same bank details as your advance, then upload the receipt. Your photo album unlocks once the full amount is confirmed.
+            Transfer the balance to the account below, then upload the receipt. Your photo album unlocks once the full amount is confirmed.
           </p>
+          {b.events?.payment_instructions ? (
+            <div className="mt-5 border border-white/15 bg-white/5 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[10px] uppercase tracking-[0.3em] text-[#e2b27c]">Bank details</p>
+                <CopyButton text={b.events.payment_instructions} label="Copy details" className="text-[#f0c58f] hover:text-white" />
+              </div>
+              <p className="mt-2 select-all whitespace-pre-line text-sm leading-7 text-white">{b.events.payment_instructions}</p>
+              <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-white/65">
+                <span>Use <b className="text-white">{b.ref}</b> as the payment reference.</span>
+                <CopyButton text={b.ref} label="Copy reference" className="text-[#f0c58f] hover:text-white" />
+              </p>
+            </div>
+          ) : (
+            <p className="mt-3 text-sm text-white/65">For bank details, message Fourmen Events on WhatsApp with your reference <b className="text-white">{b.ref}</b>.</p>
+          )}
           {bal === "rejected" && <p className="mt-3 text-sm text-[#f0c58f]">Your last receipt was not accepted{b.review_note ? `: ${b.review_note}` : ""}. Please upload a clear one.</p>}
           <div className="mt-5 text-black"><BalanceUploader bookingId={b.id} /></div>
         </div>
