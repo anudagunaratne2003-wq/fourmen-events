@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { ChevronDown, Menu, X } from "lucide-react";
 import { services } from "@/lib/services";
 import { signOut } from "@/lib/actions/session";
+import SubmitButton from "@/components/SubmitButton";
 
 type NavUser = { role: "client" | "photographer" | "admin"; name: string } | null;
 const account = {
@@ -81,7 +82,7 @@ export default function SiteNav({ user }: { user: NavUser }) {
             <div className="hidden items-center gap-5 lg:flex">
               {user ? (
                 <>
-                  <form action={signOut}><button className={link}>Sign out</button></form>
+                  <form action={signOut}><SubmitButton className={link}>Sign out</SubmitButton></form>
                   <Link href={acct!.href} className={acctBtn}>{acct!.label}</Link>
                 </>
               ) : (
@@ -118,7 +119,7 @@ export default function SiteNav({ user }: { user: NavUser }) {
               {user ? (
                 <>
                   <Link href={acct!.href} className="bg-black px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-white">{acct!.label}</Link>
-                  <form action={signOut}><button className="px-3 py-3 text-[10px] uppercase tracking-[0.2em] text-black/60">Sign out</button></form>
+                  <form action={signOut}><SubmitButton className="px-3 py-3 text-[10px] uppercase tracking-[0.2em] text-black/60">Sign out</SubmitButton></form>
                 </>
               ) : (
                 <Link href="/login" className="bg-black px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-white">Sign in</Link>

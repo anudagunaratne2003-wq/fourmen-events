@@ -1,9 +1,9 @@
 import { db } from "@/lib/supabase/admin";
 import { fmtDate, lkr } from "@/lib/format";
-import Flash from "@/components/Flash";
 import { saveEvent, setEventPhotographers, setEventStatus } from "@/lib/actions/admin";
 import { STATUS, type EventStatus } from "@/lib/events";
 import { btnSmall, btnSmallDark, h2, input, label } from "@/lib/ui";
+import SubmitButton from "@/components/SubmitButton";
 
 type Ev = { id: string; slug: string; university: string; name: string; venue: string | null; event_dates: string[]; advance_lkr: number; slot_minutes: number; payment_instructions: string | null; ceremony_note: string | null; status: string; reveal_name_on: string | null; reveal_phone_on: string | null };
 
@@ -30,13 +30,12 @@ function EventForm({ e, bookings = 0 }: { e?: Ev; bookings?: number }) {
       </div>
       <div><label className={label}>Status</label>
         <select name="status" defaultValue={e?.status ?? "draft"} className={input}>{(Object.keys(STATUS) as EventStatus[]).map((k) => <option key={k} value={k}>{STATUS[k].label} ({STATUS[k].admin.toLowerCase()})</option>)}</select></div>
-      <div className="flex items-end"><button className={btnSmallDark}>{e ? "Save changes" : "Create event"}</button></div>
+      <div className="flex items-end"><SubmitButton className={btnSmallDark}>{e ? "Save changes" : "Create event"}</SubmitButton></div>
     </form>
   );
 }
 
-export default async function EventsAdmin({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
-  const { msg } = await searchParams;
+export default async function EventsAdmin() {
   const d = db();
   const [{ data: events }, { data: phs }, { data: links }, { data: bks }] = await Promise.all([
     d.from("events").select("*").order("created_at", { ascending: false }),
@@ -49,7 +48,6 @@ export default async function EventsAdmin({ searchParams }: { searchParams: Prom
     <>
       <h1 className={h2}>Graduation events</h1>
       <p className="mb-6 mt-2 text-sm text-black/55">Add a new university here. No code changes needed.</p>
-      <Flash msg={msg} />
       <details className="border border-[#dbcfc1] bg-white p-6" open={!events?.length}>
         <summary className="cursor-pointer text-lg font-light uppercase tracking-[0.1em]">+ New event</summary>
         <EventForm />
@@ -84,7 +82,7 @@ export default async function EventsAdmin({ searchParams }: { searchParams: Prom
                   ))}
                   {!phs?.length && <span className="text-sm text-black/45">Add photographers first.</span>}
                 </div>
-                <button className={`${btnSmallDark} mt-4`}>Save photographers</button>
+                <SubmitButton className={`${btnSmallDark} mt-4`}>Save photographers</SubmitButton>
               </form>
               </details>
             </div>
@@ -114,9 +112,11 @@ function StatusControls({ e }: { e: Ev }) {
       </div>
       <div className="flex flex-wrap gap-2">
         {/* First in the form so pressing Enter in the notice box only saves the notice; shown last. */}
-        <button name="status" value="" className={`${btnSmall} order-last border-black/30 text-black/60`}>Save notice only</button>
+        <SubmitButton name="status" value="" className={`${btnSmall} order-last border-black/30 text-black/60`}>Save notice only</SubmitButton>
         {actions.filter((a) => a.to !== e.status).map((a) => (
-          <button key={a.to} name="status" value={a.to} className={a.dark ? btnSmallDark : btnSmall}>{a.text}</button>
+          <SubmitButton key={a.to} name="status" value={a.to} className={a.dark ? btnSmallDark : btnSmall}
+            confirm={a.to === "closed" ? `Close ${e.university} · ${e.name}?` : a.to === "draft" ? `Hide ${e.university} · ${e.name} from the public?` : undefined}
+            confirmDetail="Students will no longer see it or be able to book. Existing bookings are not affected." danger={a.to === "closed"}>{a.text}</SubmitButton>
         ))}
       </div>
     </form>

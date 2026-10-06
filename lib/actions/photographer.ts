@@ -7,7 +7,7 @@ import { notifyPhotosReady } from "@/lib/email";
 import { balanceOf } from "@/lib/format";
 
 const back = (msg: string, event?: string): never =>
-  redirect(`/photographer?${event ? `event=${event}&` : ""}msg=${encodeURIComponent(msg)}`);
+  redirect(`/photographer?${event ? `event=${event}&` : ""}msg=${encodeURIComponent(msg)}&t=${Date.now()}`);
 const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
 

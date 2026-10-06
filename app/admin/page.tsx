@@ -1,13 +1,12 @@
 import { db } from "@/lib/supabase/admin";
 import { fmtDate, fmtTime, lkr, stageLabel, balanceOf, fullyPaid } from "@/lib/format";
 import { isImage } from "@/lib/storage";
-import Flash from "@/components/Flash";
 import { reviewPayment, setBookingReveal, resendPhotosEmail, adjustBookingAmounts, markFullyPaid, resendPhotographerEmail } from "@/lib/actions/admin";
 import { revealFor, publicName } from "@/lib/reveal";
 import { btnSmall, btnSmallDark, h2, input } from "@/lib/ui";
+import SubmitButton from "@/components/SubmitButton";
 
-export default async function AdminHome({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
-  const { msg } = await searchParams;
+export default async function AdminHome() {
   const d = db();
   const { data: all } = await d.from("bookings")
     .select("*, events(name, university, reveal_name_on, reveal_phone_on), slots(slot_date, start_time), photographers(id, display_name, alias)")
@@ -26,7 +25,6 @@ export default async function AdminHome({ searchParams }: { searchParams: Promis
   return (
     <>
       <h1 className={h2}>Payments and bookings</h1>
-      <div className="mt-6"><Flash msg={msg} /></div>
       <div className="grid gap-4 sm:grid-cols-3">
         {[["Bookings", rows.length], ["Payments to review", queue.length], ["Verified payments", lkr(verified)]].map(([t, v]) => (
           <div key={String(t)} className="border border-[#dbcfc1] bg-white p-5"><p className="text-xs uppercase tracking-[0.2em] text-black/50">{t}</p><p className="mt-2 text-2xl font-light tracking-[0.06em]">{v}</p></div>
@@ -47,8 +45,12 @@ export default async function AdminHome({ searchParams }: { searchParams: Promis
                 <form action={reviewPayment} className="mt-4 flex flex-wrap items-center gap-2">
                   <input type="hidden" name="id" value={q.b.id} /><input type="hidden" name="kind" value={q.kind} />
                   <input name="note" placeholder="Reason (shown to client if rejected)" className={`${input} max-w-xs py-2!`} />
-                  <button name="decision" value="approve" className={btnSmallDark}>Approve</button>
-                  <button name="decision" value="reject" className={btnSmall}>Reject</button>
+                  <SubmitButton name="decision" value="approve" className={btnSmallDark} pendingText="Approving…"
+                    confirm={`Approve this ${lkr(q.amount)} ${q.kind} payment from ${q.b.client_name}?`}
+                    confirmDetail={q.kind === "advance" ? "The booking is confirmed and the photographer is emailed." : "The booking becomes paid in full and the photographer is emailed."}>Approve</SubmitButton>
+                  <SubmitButton name="decision" value="reject" className={btnSmall} danger pendingText="Rejecting…"
+                    confirm={`Reject this ${q.kind} payment?`}
+                    confirmDetail={q.kind === "advance" ? "The client is told it was not accepted and their time slot is released for others to book." : "The client is asked to upload a new receipt. Add a reason in the box so they know what to fix."}>Reject</SubmitButton>
                 </form>
               </div>
               <div>
@@ -69,13 +71,13 @@ export default async function AdminHome({ searchParams }: { searchParams: Promis
             {rows.map((b) => (
               <tr key={b.id}><td className="px-4 py-3">{b.ref}</td><td className="px-4 py-3">{b.client_name}<br /><span className="text-black/45">{b.client_phone}</span></td><td className="px-4 py-3"><b className="font-semibold">{b.events?.university}</b><br /><span className="text-black/45">{b.events?.name}</span></td><td className="px-4 py-3">{b.photographers?.display_name}<br /><span className="text-black/45">as {b.photographers ? publicName(b.photographers) : ""}</span></td><td className="px-4 py-3">{b.package_name}<AmountsCell b={b} /></td><td className="px-4 py-3">{stageLabel(b)}{b.advance_status === "approved" && (
                 <form action={resendPhotographerEmail} className="mt-1"><input type="hidden" name="id" value={b.id} />
-                  <button className="text-xs text-black/55 underline hover:text-[#9b5b2b]">Email photographer again</button></form>)}{b.advance_status === "approved" && !fullyPaid(b) && (
+                  <SubmitButton className="text-xs text-black/55 underline hover:text-[#9b5b2b]">Email photographer again</SubmitButton></form>)}{b.advance_status === "approved" && !fullyPaid(b) && (
                 <form action={markFullyPaid} className="mt-1"><input type="hidden" name="id" value={b.id} />
                   <span className="block text-xs text-black/45">{lkr(balanceOf(b))} still due</span>
-                  <button className="text-xs text-[#9b5b2b] underline">Mark as paid in full</button></form>)}<span className="mt-1 block text-xs text-black/45">{b.album_url ? <>Album link added · <a href={b.album_url} target="_blank" rel="noopener noreferrer" className="text-[#9b5b2b] underline">open</a></> : "No album link yet"}</span>{fullyPaid(b) && (
+                  <SubmitButton className="text-xs text-[#9b5b2b] underline" confirm={`Mark ${b.ref} as paid in full?`} confirmDetail="Only do this if the client paid the rest outside the website. They can then open their album and the photographer is emailed.">Mark as paid in full</SubmitButton></form>)}<span className="mt-1 block text-xs text-black/45">{b.album_url ? <>Album link added · <a href={b.album_url} target="_blank" rel="noopener noreferrer" className="text-[#9b5b2b] underline">open</a></> : "No album link yet"}</span>{fullyPaid(b) && (
                 <form action={resendPhotosEmail} className="mt-1"><input type="hidden" name="id" value={b.id} />
                   <span className="block text-xs text-black/45">{b.photos_ready_emailed_at ? `Photos email sent ${fmtDate(b.photos_ready_emailed_at.slice(0, 10))}` : "Photos email not sent yet"}</span>
-                  <button className="text-xs text-[#9b5b2b] underline">{b.photos_ready_emailed_at ? "Send again" : "Send now"}</button></form>)}</td><td className="px-4 py-3"><RevealCell b={b} /></td></tr>
+                  <SubmitButton className="text-xs text-[#9b5b2b] underline">{b.photos_ready_emailed_at ? "Send again" : "Send now"}</SubmitButton></form>)}</td><td className="px-4 py-3"><RevealCell b={b} /></td></tr>
             ))}
             {!rows.length && <tr><td colSpan={7} className="px-4 py-6 text-black/45">No bookings yet.</td></tr>}
           </tbody>
@@ -94,7 +96,7 @@ function RevealCell({ b }: { b: { id: string; advance_status: string; reveal_nam
       <label className="flex items-center justify-between gap-2">Name<input type="date" name="reveal_name_on" defaultValue={b.reveal_name_on ?? ""} className="border border-black/10 px-2 py-1" /></label>
       <label className="flex items-center justify-between gap-2">Phone<input type="date" name="reveal_phone_on" defaultValue={b.reveal_phone_on ?? ""} className="border border-black/10 px-2 py-1" /></label>
       <span className="text-black/45">{b.advance_status !== "approved" ? "Hidden until advance approved" : `Name ${state(r.name, r.nameOn)} · phone ${state(r.phone, r.phoneOn)}`}</span>
-      <button className={`${btnSmall} px-2! py-1!`}>Save</button>
+      <SubmitButton className={`${btnSmall} px-2! py-1!`}>Save</SubmitButton>
     </form>
   );
 }
@@ -110,7 +112,7 @@ function AmountsCell({ b }: { b: { id: string; package_price: number; advance_lk
         <label className="flex items-center justify-between gap-2">Package<input name="price" type="number" min={0} required defaultValue={b.package_price} className="w-28 border border-black/10 px-2 py-1" /></label>
         <label className="flex items-center justify-between gap-2">Advance<input name="advance" type="number" min={0} required defaultValue={b.advance_lkr} className="w-28 border border-black/10 px-2 py-1" /></label>
         <span className="text-black/45">Balance is recalculated.</span>
-        <button className={`${btnSmall} px-2! py-1!`}>Save</button>
+        <SubmitButton className={`${btnSmall} px-2! py-1!`}>Save</SubmitButton>
       </form>
     </details>
   );

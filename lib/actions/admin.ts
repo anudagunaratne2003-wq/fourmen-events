@@ -7,7 +7,8 @@ import { notifyPhotosReady, notifyPhotographerBooked, notifyPhotographerPaidInFu
 import { STATUS, isStatus } from "@/lib/events";
 import { lkr, splitPayment, fullyPaid } from "@/lib/format";
 
-const back = (path: string, msg: string): never => redirect(`${path}?msg=${encodeURIComponent(msg)}`);
+// "t" makes every message unique, so the same result twice in a row still shows a toast.
+const back = (path: string, msg: string): never => redirect(`${path}?msg=${encodeURIComponent(msg)}&t=${Date.now()}`);
 const isoDate = (v: FormDataEntryValue | null) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : null);
 
 export async function reviewPayment(fd: FormData) {
