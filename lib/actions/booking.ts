@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { getUser } from "@/lib/auth";
 import { db } from "@/lib/supabase/admin";
 import { splitPayment, balanceOf } from "@/lib/format";
+import { notifyAdminsPaymentToReview } from "@/lib/email";
 
 const REF_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const newRef = () => "FM-" + Array.from({ length: 4 }, () => REF_CHARS[Math.floor(Math.random() * REF_CHARS.length)]).join("");
@@ -48,6 +49,7 @@ export async function createBooking(i: BookingInput): Promise<{ id?: string; err
     }).select("id").single();
     if (row) {
       if (!user.name || !user.phone) await d.from("profiles").update({ full_name: user.name || name, phone: user.phone || phone }).eq("id", user.id);
+      await notifyAdminsPaymentToReview(row.id, "advance"); // email failures never block the booking
       revalidatePath("/account");
       return { id: row.id };
     }
@@ -67,7 +69,10 @@ export async function submitBalance(bookingId: string, proofPath: string): Promi
   if (!b.shoot_done) return { error: "The balance is requested after your shoot." };
   if (balanceOf(b) <= 0) return { error: "There is no balance left to pay on this booking." };
   if (!["none", "rejected"].includes(b.balance_status)) return { error: "Your balance is already being processed." };
-  await d.from("bookings").update({ balance_status: "pending", balance_proof_path: proofPath, review_note: null }).eq("id", bookingId);
+  const { data: sent } = await d.from("bookings").update({ balance_status: "pending", balance_proof_path: proofPath, review_note: null })
+    .eq("id", bookingId).in("balance_status", ["none", "rejected"]).select("id");
+  if (!sent?.length) return { error: "Your balance is already being processed." };
+  await notifyAdminsPaymentToReview(bookingId, "balance");
   revalidatePath(`/account/bookings/${bookingId}`);
   return {};
 }

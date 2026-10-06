@@ -208,3 +208,34 @@ export async function notifyPhotographerPaidInFull(bookingId: string) {
 
   return sendEmail(ph.email, `Paid in full: ${b.ref}${b.album_url ? "" : " (please add the album link)"}`, html, text);
 }
+
+/** A client uploaded a payment receipt: ask every admin to check it, since nothing moves on until they approve. */
+export async function notifyAdminsPaymentToReview(bookingId: string, kind: "advance" | "balance") {
+  const { data: b } = await db().from("bookings")
+    .select("ref, client_name, client_phone, package_name, package_price, advance_lkr, events(name, university), slots(slot_date, start_time), photographers(display_name)")
+    .eq("id", bookingId).maybeSingle();
+  if (!b) return;
+  const ev = b.events as unknown as { name: string; university: string } | null;
+  const slot = b.slots as unknown as { slot_date: string; start_time: string } | null;
+  const ph = b.photographers as unknown as { display_name: string } | null;
+  const amount = kind === "advance" ? b.advance_lkr : Math.max(b.package_price - b.advance_lkr, 0);
+  const what = kind === "advance" ? "advance payment (new booking)" : "remaining balance";
+  const review = `${siteUrl()}/admin`;
+  const rows: [string, string][] = [
+    ["Payment", `${what}: ${lkr(amount)}`],
+    ["Client", `${b.client_name} · ${b.client_phone}`],
+    ["University", ev?.university ?? ""], ["Event", ev?.name ?? ""],
+    ["Shoot", slot ? `${fmtDate(slot.slot_date)}, ${fmtTime(slot.start_time)}` : ""],
+    ["Photographer", ph?.display_name ?? ""],
+    ["Package", `${b.package_name} (${lkr(b.package_price)})`],
+  ];
+  const shown = rows.filter(([, v]) => v);
+  const html = emailLayout(b.ref, kind === "advance" ? "New booking to verify" : "Balance payment to verify",
+    `<p>A client has uploaded a receipt for the ${esc(what)}. Please check it and approve or reject it.</p>
+  <table style="border-collapse:collapse;width:100%;font-size:14px;margin:12px 0">${shown.map(([k, v]) => `<tr><td style="padding:5px 12px 5px 0;color:#6b5a4d;white-space:nowrap;vertical-align:top">${esc(k)}</td><td style="padding:5px 0;vertical-align:top">${esc(v)}</td></tr>`).join("")}</table>
+  <p style="font-size:13px;color:#6b5a4d">The receipt is shown in the admin panel. ${kind === "balance" ? "Once you approve it, the photographer is told the booking is paid in full." : "Once you approve it, the photographer is told about the confirmed booking."}</p>`,
+    { href: review, label: "Review payment" });
+  const text = `A client has uploaded a receipt for the ${what}. Please check it and approve or reject it.\n\n${shown.map(([k, v]) => `${k}: ${v}`).join("\n")}\n\nReview it: ${review}\nBooking reference: ${b.ref}`;
+  const subject = `${kind === "advance" ? "New booking" : "Balance payment"} to verify: ${b.ref} (${lkr(amount)})`;
+  await Promise.all((await adminRecipients()).map((to) => sendEmail(to, subject, html, text)));
+}
