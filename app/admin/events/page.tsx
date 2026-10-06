@@ -39,7 +39,7 @@ export default async function EventsAdmin() {
   const d = db();
   const [{ data: events }, { data: phs }, { data: links }, { data: bks }] = await Promise.all([
     d.from("events").select("*").order("created_at", { ascending: false }),
-    d.from("photographers").select("id, display_name").eq("active", true).order("display_name"),
+    d.from("photographers").select("id, display_name, terms_accepted_at").eq("active", true).order("display_name"),
     d.from("event_photographers").select("event_id, photographer_id"),
     d.from("bookings").select("event_id").neq("advance_status", "rejected"),
   ]);
@@ -78,7 +78,7 @@ export default async function EventsAdmin() {
                 <p className="mb-3 text-xs uppercase tracking-[0.2em] text-[#9b5b2b]">Photographers shooting this event</p>
                 <div className="flex flex-wrap gap-4">
                   {(phs ?? []).map((p) => (
-                    <label key={p.id} className="flex items-center gap-2 text-sm"><input type="checkbox" name="photographer" value={p.id} defaultChecked={chosen.has(p.id)} /> {p.display_name}</label>
+                    <label key={p.id} className="flex items-center gap-2 text-sm"><input type="checkbox" name="photographer" value={p.id} defaultChecked={chosen.has(p.id)} /> {p.display_name}{!p.terms_accepted_at && <span className="text-xs text-amber-700">(terms not accepted, hidden from clients)</span>}</label>
                   ))}
                   {!phs?.length && <span className="text-sm text-black/45">Add photographers first.</span>}
                 </div>

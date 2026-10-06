@@ -1,6 +1,7 @@
 "use server";
 import { getUser, getPhotographer } from "@/lib/auth";
 import { db } from "@/lib/supabase/admin";
+import { TERMS } from "@/lib/terms";
 
 // Edited photos are no longer stored here: photographers share a link to their own cloud album instead.
 export type UploadKind = "proof" | "portfolio";
@@ -22,6 +23,7 @@ export async function prepareUpload(input: { kind: UploadKind; fileName: string 
   } else {
     const p = user.role === "photographer" ? await getPhotographer(user) : null;
     if (!p) return { error: "Only photographers can add portfolio photos." };
+    if (p.terms_version !== TERMS.version) return { error: "Please accept the Photographer Terms in your dashboard first." };
     path = `${p.id}/${id}-${clean(input.fileName)}`;
   }
 

@@ -1,7 +1,8 @@
 import { db } from "@/lib/supabase/admin";
 import { createPhotographer, togglePhotographer, reviewApplication, setPhotographerAlias, saveBankDetailsAdmin } from "@/lib/actions/admin";
 import { publicName } from "@/lib/reveal";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtDateTimeLK } from "@/lib/format";
+import { TERMS } from "@/lib/terms";
 import { btnSmall, btnSmallDark, h2, input, label } from "@/lib/ui";
 import SubmitButton from "@/components/SubmitButton";
 import BankFields from "@/components/BankFields";
@@ -66,7 +67,12 @@ export default async function PhotographersAdmin() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div><p className="font-medium">{p.display_name} {!p.active && <span className="text-black/40">(hidden)</span>}</p>
               <p className="text-black/55">{p.email}{p.contact_phone ? ` · ${p.contact_phone}` : ""} · {p.user_id ? "has signed in" : "not signed in yet"}</p>
-              <p className="text-black/55">Clients see: <b className="font-medium text-[#9b5b2b]">{publicName(p)}</b>{!p.alias && " (auto, set a stage name)"}</p></div>
+              <p className="text-black/55">Clients see: <b className="font-medium text-[#9b5b2b]">{publicName(p)}</b>{!p.alias && " (auto, set a stage name)"}</p>
+              <p className={`text-xs ${p.terms_version === TERMS.version ? "text-green-700" : "text-amber-700"}`}>
+                {p.terms_version
+                  ? `Photographer Terms v${p.terms_version}, accepted on ${fmtDateTimeLK(p.terms_accepted_at)}${p.terms_version !== TERMS.version ? ` (must accept v${TERMS.version})` : ""}`
+                  : "Terms not accepted yet: hidden from clients until they accept in their dashboard"}
+              </p></div>
             <form action={setPhotographerAlias} className="flex gap-2"><input type="hidden" name="id" value={p.id} /><input name="alias" maxLength={60} defaultValue={p.alias ?? ""} placeholder="Stage name" aria-label={`Stage name for ${p.display_name}`} className={`${input} py-2!`} /><SubmitButton className={btnSmall}>Save</SubmitButton></form>
             <form action={togglePhotographer}><input type="hidden" name="id" value={p.id} /><input type="hidden" name="active" value={String(!p.active)} /><SubmitButton className={btnSmall}>{p.active ? "Hide" : "Show"}</SubmitButton></form>
           </div>

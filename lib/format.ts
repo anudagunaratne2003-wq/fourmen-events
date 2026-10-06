@@ -34,3 +34,11 @@ export function stageLabel(b: B) {
   if (!b.shoot_done) return "Confirmed";
   return "Balance due";
 }
+
+/** "06 October 2026 at 14:32", in Sri Lanka time. */
+export function fmtDateTimeLK(iso: string) {
+  const d = new Date(iso), tz = "Asia/Colombo";
+  const date = d.toLocaleDateString("en-GB", { timeZone: tz, day: "2-digit", month: "long", year: "numeric" });
+  const time = d.toLocaleTimeString("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false });
+  return `${date} at ${time}`;
+}

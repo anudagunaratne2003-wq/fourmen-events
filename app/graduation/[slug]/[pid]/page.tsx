@@ -16,7 +16,7 @@ export default async function PhotographerPage({ params }: { params: Promise<{ s
   const { data: ev } = await d.from("events").select("*").eq("slug", slug).in("status", VISIBLE).maybeSingle();
   if (!ev) notFound();
   const { data: link } = await d.from("event_photographers").select("event_id").eq("event_id", ev.id).eq("photographer_id", pid).maybeSingle();
-  const { data: ph } = await d.from("photographers").select("id, alias, style, bio").eq("id", pid).eq("active", true).maybeSingle();
+  const { data: ph } = await d.from("photographers").select("id, alias, style, bio").eq("id", pid).eq("active", true).not("terms_accepted_at", "is", null).maybeSingle();
   if (!link || !ph) notFound();
 
   const name = publicName(ph); // real names stay private until the admin reveals them per booking

@@ -15,7 +15,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
   const { data: links } = await d.from("event_photographers").select("photographer_id").eq("event_id", ev.id);
   const ids = (links ?? []).map((l) => l.photographer_id);
   const [{ data: phs }, { data: pkgs }, { data: imgs }, { data: slots }] = await Promise.all([
-    d.from("photographers").select("id, alias, style").in("id", ids).eq("active", true).order("alias"),
+    d.from("photographers").select("id, alias, style").in("id", ids).eq("active", true).not("terms_accepted_at", "is", null).order("alias"),
     d.from("packages").select("photographer_id, price_lkr").in("photographer_id", ids).eq("active", true),
     d.from("portfolio_images").select("photographer_id, path").in("photographer_id", ids).order("created_at", { ascending: false }),
     d.from("slots").select("photographer_id").eq("event_id", ev.id).eq("status", "open").gte("slot_date", new Date().toISOString().slice(0, 10)),

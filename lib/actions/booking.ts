@@ -31,6 +31,9 @@ export async function createBooking(i: BookingInput): Promise<{ id?: string; err
   if (!pkg) return { error: "That package is no longer available." };
   const { data: link } = await d.from("event_photographers").select("event_id").eq("event_id", ev.id).eq("photographer_id", i.photographerId).maybeSingle();
   if (!link) return { error: "This photographer is not part of this event." };
+  // Only active photographers who have accepted the Photographer Terms can be booked (also blocks direct links).
+  const { data: ph } = await d.from("photographers").select("id").eq("id", i.photographerId).eq("active", true).not("terms_accepted_at", "is", null).maybeSingle();
+  if (!ph) return { error: "This photographer is not taking bookings right now." };
 
   // First come, first served: this single UPDATE only succeeds for the first person.
   const { data: claimed } = await d.from("slots").update({ status: "booked" })

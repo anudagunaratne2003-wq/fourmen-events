@@ -5,10 +5,13 @@ import { fmtDate, fmtTime, firstName, lkr, stageLabel, fullyPaid } from "@/lib/f
 import { portfolioUrl } from "@/lib/storage";
 import { publicName } from "@/lib/reveal";
 import { PortfolioUploader } from "@/components/ActionUploaders";
-import { joinEvent, leaveEvent, createSlots, setSlotStatus, deleteSlot, markShootDone, saveAlbumLink, savePackage, deletePackage, deletePortfolioImage, saveBankDetails } from "@/lib/actions/photographer";
+import { joinEvent, leaveEvent, createSlots, setSlotStatus, deleteSlot, markShootDone, saveAlbumLink, savePackage, deletePackage, deletePortfolioImage, saveBankDetails, acceptTerms } from "@/lib/actions/photographer";
 import { btnSmall, btnSmallDark, h2, input, label } from "@/lib/ui";
 import SubmitButton from "@/components/SubmitButton";
 import BankFields from "@/components/BankFields";
+import TermsDocument from "@/components/TermsDocument";
+import AgreeToTerms from "@/components/AgreeToTerms";
+import { TERMS } from "@/lib/terms";
 
 const box = "border border-[#dbcfc1] bg-[#f8f4ef] p-6";
 const sec = "mt-14";
@@ -18,6 +21,32 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const user = await requireRole("photographer");
   const p = await getPhotographer(user);
   if (!p) return <main className="mx-auto max-w-3xl px-5 py-20 text-sm">Your photographer profile is not set up yet. Please contact Fourmen Events.</main>;
+
+  // The profile is only activated once the current Photographer Terms are accepted.
+  if (p.terms_version !== TERMS.version) {
+    const updated = !!p.terms_version;
+    return (
+      <main className="mx-auto max-w-3xl px-5 py-12 md:py-16">
+        <p className="text-[10px] uppercase tracking-[0.3em] text-[#9b5b2b]">{updated ? "Updated terms" : "One last step"}</p>
+        <h1 className={`${h2} mt-3`}>{updated ? "Please accept the updated terms" : `Welcome, ${firstName(p.display_name) || "photographer"}`}</h1>
+        <p className="mt-3 text-sm leading-7 text-black/60">
+          {updated
+            ? `The Photographer Terms & Conditions have changed since you accepted version ${p.terms_version}. Please read and accept version ${TERMS.version} to keep using your dashboard. Your confirmed bookings are not affected.`
+            : "Before your photographer profile is activated, please read and accept the Fourmen Events Photographer Terms & Conditions. Clients will not see your profile until you do."}
+        </p>
+        <div className="mt-8 max-h-[60vh] overflow-y-auto border border-[#dbcfc1] bg-[#f8f4ef] p-6 md:p-8" tabIndex={0} aria-label="Photographer Terms and Conditions">
+          <h2 className="mb-4 text-lg font-light uppercase tracking-[0.12em]">{TERMS.title}</h2>
+          <TermsDocument />
+        </div>
+        <p className="mt-3 text-xs text-black/45">
+          You can also <a href="/photographer-terms" target="_blank" className="underline">open the terms in a new tab</a> to read or print them.
+        </p>
+        <form action={acceptTerms} className="mt-6 border border-black/10 bg-white p-6">
+          <AgreeToTerms version={TERMS.version} />
+        </form>
+      </main>
+    );
+  }
 
   const d = db();
   const { data: links } = await d.from("event_photographers").select("events(id, slug, name, university, event_dates, slot_minutes, status)").eq("photographer_id", p.id);

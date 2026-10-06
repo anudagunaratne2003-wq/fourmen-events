@@ -1,11 +1,13 @@
 "use server";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { requireRole, getPhotographer } from "@/lib/auth";
 import { db } from "@/lib/supabase/admin";
 import { notifyPhotosReady } from "@/lib/email";
 import { parseBankForm, saveBankAccount } from "@/lib/bank";
 import { balanceOf } from "@/lib/format";
+import { TERMS, termsHash, termsText } from "@/lib/terms";
 
 const back = (msg: string, event?: string): never =>
   redirect(`/photographer?${event ? `event=${event}&` : ""}msg=${encodeURIComponent(msg)}&t=${Date.now()}`);
@@ -16,7 +18,34 @@ async function me() {
   const user = await requireRole("photographer");
   const p = await getPhotographer(user);
   if (!p) redirect("/photographer");
+  // No dashboard actions until the current Photographer Terms are accepted.
+  if (p.terms_version !== TERMS.version) redirect("/photographer");
   return p;
+}
+
+/** Records the photographer's acceptance of the current terms and activates their profile. */
+export async function acceptTerms(fd: FormData) {
+  const user = await requireRole("photographer");
+  const p = await getPhotographer(user);
+  if (!p) redirect("/photographer");
+  if (String(fd.get("agree")) !== "yes") return back("Please tick the box to agree to the terms.");
+  // The form shows a specific version; if the terms changed while the page was open, show the new ones.
+  if (String(fd.get("version")) !== TERMS.version) return back("The terms were just updated. Please read the latest version and accept again.");
+  if (p.terms_version === TERMS.version) return back("You have already accepted these terms.");
+
+  const h = await headers();
+  const ip = (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || h.get("x-real-ip") || null;
+  const acceptedAt = new Date().toISOString();
+  const d = db();
+  const { error } = await d.from("photographer_terms_acceptances").insert({
+    photographer_id: p.id, user_id: user.id, full_name: user.name || p.display_name, email: user.email,
+    terms_version: TERMS.version, terms_hash: termsHash(), terms_text: termsText(),
+    accepted_at: acceptedAt, ip_address: ip, user_agent: (h.get("user-agent") ?? "").slice(0, 300) || null,
+  });
+  if (error) return back("Could not record your acceptance. Please try again.");
+  await d.from("photographers").update({ terms_version: TERMS.version, terms_accepted_at: acceptedAt }).eq("id", p.id);
+  revalidatePath("/photographer"); revalidatePath("/graduation", "layout");
+  back(`Thank you. You accepted the Photographer Terms (version ${TERMS.version}) and your profile is active.`);
 }
 
 /** Photographers can add themselves to any event that is not closed, then publish their own times. */

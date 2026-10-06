@@ -52,6 +52,11 @@ export default function ApplyForm() {
         </div>
       </fieldset>
       <div><label className={label} htmlFor="a-msg">Tell us about yourself (optional)</label><textarea id="a-msg" name="message" rows={4} maxLength={2000} className={input} placeholder="Your style, gear, availability…" /></div>
+      <p className="text-xs leading-5 text-black/55">
+        If you are approved, you will be asked to accept the{" "}
+        <a href="/photographer-terms" target="_blank" className="underline">Fourmen Events Photographer Terms &amp; Conditions</a>{" "}
+        before your profile goes live.
+      </p>
       {state.error && <p role="alert" className="text-sm text-red-700">{state.error}</p>}
       <button disabled={pending} className={`${btnDark} w-full sm:w-fit`}>{pending ? "Sending…" : "Send application"}</button>
     </form>
