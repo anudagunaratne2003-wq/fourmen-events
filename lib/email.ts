@@ -6,22 +6,39 @@ import { envAdminEmails } from "@/lib/auth";
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/+$/, "");
 
+/** Reads a setting, ignoring spaces and wrapping quotes pasted in from a .env file
+ *  (e.g. EMAIL_FROM="Fourmen Events <hello@…>" copied into Vercel with the quotes). */
+const setting = (v: string | undefined) => (v ?? "").trim().replace(/^(["'])(.*)\1$/, "$2").trim();
+
+let lastError = "";
+/** Why the most recent send failed, in plain words, so admins can see it instead of digging in logs. */
+export const lastEmailError = () => lastError;
+
 /** Sends one email through Resend (resend.com). Returns false if email is not configured or sending failed. */
 export async function sendEmail(to: string, subject: string, html: string, text: string) {
-  const key = process.env.RESEND_API_KEY, from = process.env.EMAIL_FROM;
+  const key = setting(process.env.RESEND_API_KEY), from = setting(process.env.EMAIL_FROM), replyTo = setting(process.env.EMAIL_REPLY_TO);
+  lastError = "";
   if (!key || !from) {
-    console.warn(`[email] RESEND_API_KEY or EMAIL_FROM is not set. Skipped: "${subject}" to ${to}`);
+    lastError = "RESEND_API_KEY or EMAIL_FROM is not set";
+    console.warn(`[email] ${lastError}. Skipped: "${subject}" to ${to}`);
     return false;
   }
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: [to], subject, html, text, reply_to: process.env.EMAIL_REPLY_TO || undefined }),
+      body: JSON.stringify({ from, to: [to], subject, html, text, reply_to: replyTo || undefined }),
     });
-    if (!res.ok) console.error(`[email] Resend returned ${res.status}: ${await res.text()}`);
+    if (!res.ok) {
+      const body = await res.text();
+      let msg = body;
+      try { msg = JSON.parse(body).message ?? body; } catch { /* not JSON */ }
+      lastError = `Resend ${res.status}: ${String(msg).slice(0, 200)}`;
+      console.error(`[email] ${lastError}`);
+    }
     return res.ok;
   } catch (err) {
+    lastError = "could not reach Resend";
     console.error("[email] Could not reach Resend", err);
     return false;
   }

@@ -2,7 +2,7 @@ import { db } from "@/lib/supabase/admin";
 import { fmtDate, fmtTime, lkr, stageLabel, balanceOf, fullyPaid } from "@/lib/format";
 import { isImage } from "@/lib/storage";
 import Flash from "@/components/Flash";
-import { reviewPayment, setBookingReveal, resendPhotosEmail, adjustBookingAmounts, markFullyPaid } from "@/lib/actions/admin";
+import { reviewPayment, setBookingReveal, resendPhotosEmail, adjustBookingAmounts, markFullyPaid, resendPhotographerEmail } from "@/lib/actions/admin";
 import { revealFor, publicName } from "@/lib/reveal";
 import { btnSmall, btnSmallDark, h2, input } from "@/lib/ui";
 
@@ -67,7 +67,9 @@ export default async function AdminHome({ searchParams }: { searchParams: Promis
           <thead className="text-xs uppercase tracking-[0.15em] text-black/45"><tr>{["Ref", "Client", "Event", "Photographer", "Package", "Status", "Reveal to client (blank = event date)"].map((h) => <th key={h} className="px-4 py-3 font-normal">{h}</th>)}</tr></thead>
           <tbody className="divide-y divide-black/10">
             {rows.map((b) => (
-              <tr key={b.id}><td className="px-4 py-3">{b.ref}</td><td className="px-4 py-3">{b.client_name}<br /><span className="text-black/45">{b.client_phone}</span></td><td className="px-4 py-3"><b className="font-semibold">{b.events?.university}</b><br /><span className="text-black/45">{b.events?.name}</span></td><td className="px-4 py-3">{b.photographers?.display_name}<br /><span className="text-black/45">as {b.photographers ? publicName(b.photographers) : ""}</span></td><td className="px-4 py-3">{b.package_name}<AmountsCell b={b} /></td><td className="px-4 py-3">{stageLabel(b)}{b.advance_status === "approved" && !fullyPaid(b) && (
+              <tr key={b.id}><td className="px-4 py-3">{b.ref}</td><td className="px-4 py-3">{b.client_name}<br /><span className="text-black/45">{b.client_phone}</span></td><td className="px-4 py-3"><b className="font-semibold">{b.events?.university}</b><br /><span className="text-black/45">{b.events?.name}</span></td><td className="px-4 py-3">{b.photographers?.display_name}<br /><span className="text-black/45">as {b.photographers ? publicName(b.photographers) : ""}</span></td><td className="px-4 py-3">{b.package_name}<AmountsCell b={b} /></td><td className="px-4 py-3">{stageLabel(b)}{b.advance_status === "approved" && (
+                <form action={resendPhotographerEmail} className="mt-1"><input type="hidden" name="id" value={b.id} />
+                  <button className="text-xs text-black/55 underline hover:text-[#9b5b2b]">Email photographer again</button></form>)}{b.advance_status === "approved" && !fullyPaid(b) && (
                 <form action={markFullyPaid} className="mt-1"><input type="hidden" name="id" value={b.id} />
                   <span className="block text-xs text-black/45">{lkr(balanceOf(b))} still due</span>
                   <button className="text-xs text-[#9b5b2b] underline">Mark as paid in full</button></form>)}<span className="mt-1 block text-xs text-black/45">{b.album_url ? <>Album link added · <a href={b.album_url} target="_blank" rel="noopener noreferrer" className="text-[#9b5b2b] underline">open</a></> : "No album link yet"}</span>{fullyPaid(b) && (

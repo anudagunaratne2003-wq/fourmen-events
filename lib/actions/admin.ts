@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireRole, envAdminEmails } from "@/lib/auth";
 import { db } from "@/lib/supabase/admin";
-import { notifyPhotosReady, notifyPhotographerBooked, notifyApplicationDecision } from "@/lib/email";
+import { notifyPhotosReady, notifyPhotographerBooked, notifyApplicationDecision, lastEmailError } from "@/lib/email";
 import { STATUS, isStatus } from "@/lib/events";
 import { lkr, splitPayment, fullyPaid } from "@/lib/format";
 
@@ -38,7 +38,7 @@ export async function reviewPayment(fd: FormData) {
 
   await d.from("audit_log").insert({ actor_id: admin.id, action: `${kind}_${approve ? "approved" : "rejected"}`, booking_id: id, detail: { note } });
   revalidatePath("/admin");
-  const tail = kind === "advance" && approve ? (mailed ? " The photographer was emailed." : " The photographer was not emailed (check email settings).") : "";
+  const tail = kind === "advance" && approve ? (mailed ? " The photographer was emailed." : ` The photographer was not emailed (${lastEmailError() || "unknown error"}).`) : "";
   back("/admin", `${b.ref}: ${kind} ${approve ? "approved" : "rejected"}.${tail}`);
 }
 
@@ -257,4 +257,15 @@ export async function markFullyPaid(fd: FormData) {
   await notifyPhotosReady(id);
   revalidatePath("/admin");
   back("/admin", `${data.ref}: marked as paid in full. The client can now open their album link once the photographer adds it.`);
+}
+
+/** Sends the "confirmed booking" email to the photographer again, e.g. if the first one failed. */
+export async function resendPhotographerEmail(fd: FormData) {
+  const admin = await requireRole("admin");
+  const id = String(fd.get("id"));
+  const { data: b } = await db().from("bookings").select("ref, advance_status").eq("id", id).maybeSingle();
+  if (!b || b.advance_status !== "approved") return back("/admin", "The photographer is only emailed once the advance is approved.");
+  const ok = await notifyPhotographerBooked(id);
+  await db().from("audit_log").insert({ actor_id: admin.id, action: "photographer_email_resent", booking_id: id, detail: { sent: ok, error: ok ? null : lastEmailError() } });
+  back("/admin", ok ? `${b.ref}: the photographer was emailed.` : `${b.ref}: the photographer was not emailed (${lastEmailError() || "unknown error"}).`);
 }
