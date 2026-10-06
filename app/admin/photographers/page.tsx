@@ -1,16 +1,20 @@
 import { db } from "@/lib/supabase/admin";
-import { createPhotographer, togglePhotographer, reviewApplication, setPhotographerAlias } from "@/lib/actions/admin";
+import { createPhotographer, togglePhotographer, reviewApplication, setPhotographerAlias, saveBankDetailsAdmin } from "@/lib/actions/admin";
 import { publicName } from "@/lib/reveal";
 import { fmtDate } from "@/lib/format";
 import { btnSmall, btnSmallDark, h2, input, label } from "@/lib/ui";
 import SubmitButton from "@/components/SubmitButton";
+import BankFields from "@/components/BankFields";
+import CopyButton from "@/components/CopyButton";
 
 export default async function PhotographersAdmin() {
   const d = db();
-  const [{ data: phs }, { data: apps }] = await Promise.all([
+  const [{ data: phs }, { data: apps }, { data: banks }] = await Promise.all([
     d.from("photographers").select("*").order("created_at", { ascending: false }),
     d.from("photographer_applications").select("*").eq("status", "pending").order("created_at", { ascending: false }),
+    d.from("photographer_bank_accounts").select("photographer_id, bank_name, branch, account_name, account_number, updated_at"),
   ]);
+  const bankOf = (id: string) => (banks ?? []).find((b) => b.photographer_id === id) ?? null;
   return (
     <>
       <h1 className={h2}>Photographers</h1>
@@ -55,15 +59,40 @@ export default async function PhotographersAdmin() {
         <div><SubmitButton className={btnSmallDark}>Add photographer</SubmitButton></div>
       </form>
       <div className="mt-8 divide-y divide-black/10 border border-[#dbcfc1] bg-white">
-        {(phs ?? []).map((p) => (
-          <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 text-sm">
+        {(phs ?? []).map((p) => {
+          const bank = bankOf(p.id);
+          return (
+          <div key={p.id} className="px-5 py-4 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div><p className="font-medium">{p.display_name} {!p.active && <span className="text-black/40">(hidden)</span>}</p>
               <p className="text-black/55">{p.email}{p.contact_phone ? ` · ${p.contact_phone}` : ""} · {p.user_id ? "has signed in" : "not signed in yet"}</p>
               <p className="text-black/55">Clients see: <b className="font-medium text-[#9b5b2b]">{publicName(p)}</b>{!p.alias && " (auto, set a stage name)"}</p></div>
             <form action={setPhotographerAlias} className="flex gap-2"><input type="hidden" name="id" value={p.id} /><input name="alias" maxLength={60} defaultValue={p.alias ?? ""} placeholder="Stage name" aria-label={`Stage name for ${p.display_name}`} className={`${input} py-2!`} /><SubmitButton className={btnSmall}>Save</SubmitButton></form>
             <form action={togglePhotographer}><input type="hidden" name="id" value={p.id} /><input type="hidden" name="active" value={String(!p.active)} /><SubmitButton className={btnSmall}>{p.active ? "Hide" : "Show"}</SubmitButton></form>
           </div>
-        ))}
+          <div className="mt-3 border-t border-black/10 pt-3">
+            {bank ? (
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <p className="leading-6 text-black/70">
+                  <span className="text-xs uppercase tracking-[0.2em] text-[#9b5b2b]">Payout · </span>
+                  {bank.bank_name}, {bank.branch} · {bank.account_name} · <span className="font-mono">{bank.account_number}</span>
+                  <span className="block text-xs text-black/40">Updated {fmtDate(bank.updated_at.slice(0, 10))}</span>
+                </p>
+                <CopyButton text={`${bank.bank_name}, ${bank.branch}\n${bank.account_name}\n${bank.account_number}`} label="Copy bank details" className="text-[#9b5b2b] hover:text-black" />
+              </div>
+            ) : <p className="text-xs text-amber-700">No payout bank details yet. The photographer can add them in their dashboard, or you can add them below.</p>}
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs text-black/55 underline">{bank ? "Edit payout details" : "Add payout details"}</summary>
+              <form action={saveBankDetailsAdmin} className="mt-3 grid max-w-2xl gap-3">
+                <input type="hidden" name="photographer_id" value={p.id} />
+                <BankFields bank={bank} idPrefix={`ph-${p.id}`} />
+                <div><SubmitButton className={btnSmallDark} pendingText="Saving…" confirm={`Save payout details for ${p.display_name}?`} confirmDetail="The photographer is emailed that their payout details changed.">Save payout details</SubmitButton></div>
+              </form>
+            </details>
+          </div>
+          </div>
+          );
+        })}
         {!phs?.length && <p className="px-5 py-6 text-sm text-black/45">No photographers yet.</p>}
       </div>
     </>

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireRole, getPhotographer } from "@/lib/auth";
 import { db } from "@/lib/supabase/admin";
 import { notifyPhotosReady } from "@/lib/email";
+import { parseBankForm, saveBankAccount } from "@/lib/bank";
 import { balanceOf } from "@/lib/format";
 
 const back = (msg: string, event?: string): never =>
@@ -156,4 +157,16 @@ export async function deletePortfolioImage(fd: FormData) {
   if (img) { await d.storage.from("portfolio").remove([img.path]); await d.from("portfolio_images").delete().eq("id", img.id); }
   revalidatePath("/photographer");
   back("Photo removed.");
+}
+
+/** Photographers keep their own payout bank details up to date. */
+export async function saveBankDetails(fd: FormData) {
+  const p = await me();
+  const user = await requireRole("photographer");
+  const parsed = parseBankForm(fd);
+  if ("error" in parsed) return back(parsed.error);
+  const r = await saveBankAccount(p.id, parsed.row, user.id, false);
+  if ("error" in r) return back(r.error!);
+  revalidatePath("/photographer");
+  back(r.changed ? "Payout details saved. We have emailed you a confirmation." : "No changes to save.");
 }

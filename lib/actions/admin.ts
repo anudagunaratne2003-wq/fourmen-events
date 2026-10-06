@@ -6,6 +6,7 @@ import { db } from "@/lib/supabase/admin";
 import { notifyPhotosReady, notifyPhotographerBooked, notifyPhotographerPaidInFull, notifyApplicationDecision, lastEmailError } from "@/lib/email";
 import { STATUS, isStatus } from "@/lib/events";
 import { lkr, splitPayment, fullyPaid } from "@/lib/format";
+import { parseBankForm, saveBankAccount } from "@/lib/bank";
 
 // "t" makes every message unique, so the same result twice in a row still shows a toast.
 const back = (path: string, msg: string): never => redirect(`${path}?msg=${encodeURIComponent(msg)}&t=${Date.now()}`);
@@ -276,4 +277,18 @@ export async function resendPhotographerEmail(fd: FormData) {
   const ok = await notifyPhotographerBooked(id);
   await db().from("audit_log").insert({ actor_id: admin.id, action: "photographer_email_resent", booking_id: id, detail: { sent: ok, error: ok ? null : lastEmailError() } });
   back("/admin", ok ? `${b.ref}: the photographer was emailed.` : `${b.ref}: the photographer was not emailed (${lastEmailError() || "unknown error"}).`);
+}
+
+/** Admins can enter or correct a photographer's payout details (the photographer is emailed about it). */
+export async function saveBankDetailsAdmin(fd: FormData) {
+  const admin = await requireRole("admin");
+  const id = String(fd.get("photographer_id"));
+  const { data: ph } = await db().from("photographers").select("id, display_name").eq("id", id).maybeSingle();
+  if (!ph) return back("/admin/photographers", "Photographer not found.");
+  const parsed = parseBankForm(fd);
+  if ("error" in parsed) return back("/admin/photographers", `${ph.display_name}: ${parsed.error}`);
+  const r = await saveBankAccount(ph.id, parsed.row, admin.id, true);
+  if ("error" in r) return back("/admin/photographers", r.error!);
+  revalidatePath("/admin/photographers");
+  back("/admin/photographers", r.changed ? `${ph.display_name}: payout details saved and the photographer was notified.` : `${ph.display_name}: no changes to save.`);
 }

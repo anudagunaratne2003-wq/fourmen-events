@@ -5,9 +5,10 @@ import { fmtDate, fmtTime, firstName, lkr, stageLabel, fullyPaid } from "@/lib/f
 import { portfolioUrl } from "@/lib/storage";
 import { publicName } from "@/lib/reveal";
 import { PortfolioUploader } from "@/components/ActionUploaders";
-import { joinEvent, leaveEvent, createSlots, setSlotStatus, deleteSlot, markShootDone, saveAlbumLink, savePackage, deletePackage, deletePortfolioImage } from "@/lib/actions/photographer";
+import { joinEvent, leaveEvent, createSlots, setSlotStatus, deleteSlot, markShootDone, saveAlbumLink, savePackage, deletePackage, deletePortfolioImage, saveBankDetails } from "@/lib/actions/photographer";
 import { btnSmall, btnSmallDark, h2, input, label } from "@/lib/ui";
 import SubmitButton from "@/components/SubmitButton";
+import BankFields from "@/components/BankFields";
 
 const box = "border border-[#dbcfc1] bg-[#f8f4ef] p-6";
 const sec = "mt-14";
@@ -25,11 +26,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const { data: openEvents } = await d.from("events").select("id, name, university, event_dates").neq("status", "closed").order("created_at", { ascending: false });
   const joinable = (openEvents ?? []).filter((e) => !events.some((x) => x.id === e.id));
 
-  const [{ data: slots }, { data: bookings }, { data: pkgs }, { data: imgs }] = await Promise.all([
+  const [{ data: slots }, { data: bookings }, { data: pkgs }, { data: imgs }, { data: bank }] = await Promise.all([
     ev ? d.from("slots").select("*").eq("event_id", ev.id).eq("photographer_id", p.id).order("slot_date").order("start_time") : Promise.resolve({ data: [] as never[] }),
     d.from("bookings").select("*, events(name, university), slots(slot_date, start_time)").eq("photographer_id", p.id).neq("advance_status", "rejected").order("created_at", { ascending: false }),
     d.from("packages").select("*").eq("photographer_id", p.id).order("price_lkr"),
     d.from("portfolio_images").select("id, path").eq("photographer_id", p.id).order("created_at", { ascending: false }),
+    d.from("photographer_bank_accounts").select("bank_name, branch, account_name, account_number, updated_at").eq("photographer_id", p.id).maybeSingle(),
   ]);
   const dates = [...new Set((slots ?? []).map((s) => s.slot_date))];
 
@@ -38,6 +40,11 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       <h1 className={h2}>Hello, {p.display_name}</h1>
       <p className="mt-2 text-sm text-black/55">Manage your times, packages, portfolio and client albums.</p>
       <p className="mt-2 text-sm text-black/55">Clients see you as <b className="font-medium text-[#9b5b2b]">{publicName(p)}</b>. Fourmen shares your real name and phone with each client after their advance is approved, on dates set by the team.</p>
+      {!bank && (
+        <a href="#payout" className="mt-4 block border-l-4 border-[#9b5b2b] bg-[#f3eee7] px-4 py-3 text-sm text-black/75 hover:bg-[#ede5da]">
+          Add your bank details under <b>Payout details</b> so Fourmen Events can transfer your earnings. →
+        </a>
+      )}
 
       {/* ---------- Availability ---------- */}
       <section className={sec} id="availability">
@@ -148,6 +155,22 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             ))}
           </div>
         )}
+      </section>
+
+      {/* ---------- Payout details ---------- */}
+      <section className={sec} id="payout">
+        <h2 className="text-xl font-light uppercase tracking-[0.16em]">Payout details</h2>
+        <p className="mb-4 mt-2 max-w-2xl text-sm text-black/55">
+          The bank account Fourmen Events transfers your earnings to. Only you and the Fourmen team can see it, never clients.
+          We email you whenever these details change.
+        </p>
+        <form action={saveBankDetails} className={`${box} grid max-w-3xl gap-4`}>
+          <BankFields bank={bank} idPrefix="me" />
+          <div className="flex flex-wrap items-center gap-3">
+            <SubmitButton className={btnSmallDark} pendingText="Saving…">{bank ? "Update payout details" : "Save payout details"}</SubmitButton>
+            {bank?.updated_at && <span className="text-xs text-black/45">Last updated {fmtDate(bank.updated_at.slice(0, 10))}</span>}
+          </div>
+        </form>
       </section>
 
       {/* ---------- Packages ---------- */}

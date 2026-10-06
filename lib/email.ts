@@ -242,3 +242,24 @@ export async function notifyAdminsPaymentToReview(bookingId: string, kind: "adva
   const subject = `${kind === "advance" ? "New booking" : "Balance payment"} to verify: ${b.ref} (${lkr(amount)})`;
   await Promise.all((await adminRecipients()).map((to) => sendEmail(to, subject, html, text)));
 }
+
+/** Security notice to the photographer whenever their payout bank details change.
+ *  If someone else got into their account and swapped the account number, this is how they find out. */
+export async function notifyBankDetailsChanged(
+  photographerId: string,
+  row: { bank_name: string; branch: string; account_name: string; account_number: string },
+  byAdmin: boolean,
+) {
+  const { data: ph } = await db().from("photographers").select("email, display_name").eq("id", photographerId).maybeSingle();
+  if (!ph?.email) return false;
+  const hi = `Hi ${firstName(ph.display_name) || "there"},`;
+  const masked = `•••• ${row.account_number.slice(-4)}`;
+  const who = byAdmin ? "The Fourmen Events team updated" : "Your";
+  const html = emailLayout("", "Payout details updated", `<p>${esc(hi)}</p>
+  <p>${esc(who)} payout bank details ${byAdmin ? "for you" : "were just updated"}. Fourmen Events will send your earnings to:</p>
+  <p style="background:#f8f4ef;border:1px solid #dbcfc1;padding:12px 16px">${esc(row.bank_name)}, ${esc(row.branch)}<br>${esc(row.account_name)}<br>Account ${esc(masked)}</p>
+  <p><b>If you did not make this change</b>, reply to this email or message Fourmen Events right away, and change your password.</p>`,
+    { href: `${siteUrl()}/photographer#payout`, label: "Check your payout details" });
+  const text = `${hi}\n\n${who} payout bank details ${byAdmin ? "for you" : "were just updated"}. Fourmen Events will send your earnings to:\n${row.bank_name}, ${row.branch}\n${row.account_name}\nAccount ${masked}\n\nIf you did not make this change, reply to this email or message Fourmen Events right away, and change your password.\n\nFourmen Events`;
+  return sendEmail(ph.email, "Your payout details were updated", html, text);
+}
