@@ -66,7 +66,8 @@ export async function submitBalance(bookingId: string, proofPath: string): Promi
   const d = db();
   const { data: b } = await d.from("bookings").select("*").eq("id", bookingId).eq("client_id", user.id).single();
   if (!b) return { error: "Booking not found." };
-  if (!b.shoot_done) return { error: "The balance is requested after your shoot." };
+  // The balance can be paid any time once the advance is approved, before or after the shoot.
+  if (b.advance_status !== "approved") return { error: "Your advance payment must be confirmed first." };
   if (balanceOf(b) <= 0) return { error: "There is no balance left to pay on this booking." };
   if (!["none", "rejected"].includes(b.balance_status)) return { error: "Your balance is already being processed." };
   const { data: sent } = await d.from("bookings").update({ balance_status: "pending", balance_proof_path: proofPath, review_note: null })

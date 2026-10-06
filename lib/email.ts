@@ -185,7 +185,7 @@ export async function notifyApplicationDecision(a: { name: string; email: string
 export async function notifyPhotographerPaidInFull(bookingId: string) {
   const d = db();
   const { data: b } = await d.from("bookings")
-    .select("id, ref, client_name, package_name, package_price, advance_lkr, album_url, events(id, name, university), slots(slot_date, start_time), photographers(email, display_name)")
+    .select("id, ref, client_name, package_name, package_price, advance_lkr, album_url, shoot_done, events(id, name, university), slots(slot_date, start_time), photographers(email, display_name)")
     .eq("id", bookingId).maybeSingle();
   const ph = b?.photographers as unknown as { email: string; display_name: string } | null;
   if (!b || !ph?.email) return false;
@@ -195,18 +195,21 @@ export async function notifyPhotographerPaidInFull(bookingId: string) {
   const balance = Math.max(b.package_price - b.advance_lkr, 0);
   const link = `${siteUrl()}/photographer${ev ? `?event=${ev.id}` : ""}#bookings`;
   const shoot = [ev?.university, ev?.name, slot ? `${fmtDate(slot.slot_date)}, ${fmtTime(slot.start_time)}` : ""].filter(Boolean).join(" · ");
+  // The client may now pay in full before the shoot, so only ask for the album once the shoot is done.
   const next = b.album_url
     ? "Your album link is already saved, so the client can now open their photos."
-    : "Next step: add the share link to the edited album in your dashboard. The client sees it as soon as you save it.";
+    : b.shoot_done
+      ? "Next step: add the share link to the edited album in your dashboard. The client sees it as soon as you save it."
+      : "There is nothing more to collect from this client. After the shoot, add the share link to the edited album in your dashboard.";
 
   const html = emailLayout(b.ref, "Paid in full", `<p>Hi ${esc(firstName(ph.display_name) || "there")},</p>
   <p>${esc(client)} has paid the remaining balance${balance ? ` of <b>${esc(lkr(balance))}</b>` : ""}, so the ${esc(b.package_name)} package (${esc(lkr(b.package_price))}) is now <b>paid in full</b>.</p>
   ${shoot ? `<p style="color:#6b5a4d">${esc(shoot)}</p>` : ""}
   <p>${esc(next)}</p>
-  <p style="font-size:13px;color:#6b5a4d">Booking reference: ${esc(b.ref)}</p>`, { href: link, label: b.album_url ? "Open your dashboard" : "Add the album link" });
+  <p style="font-size:13px;color:#6b5a4d">Booking reference: ${esc(b.ref)}</p>`, { href: link, label: !b.album_url && b.shoot_done ? "Add the album link" : "Open your dashboard" });
   const text = `Hi ${firstName(ph.display_name) || "there"},\n\n${client} has paid the remaining balance${balance ? ` of ${lkr(balance)}` : ""}, so the ${b.package_name} package (${lkr(b.package_price)}) is now paid in full.\n${shoot ? `${shoot}\n` : ""}\n${next}\n\nYour dashboard: ${link}\nBooking reference: ${b.ref}\n\nFourmen Events`;
 
-  return sendEmail(ph.email, `Paid in full: ${b.ref}${b.album_url ? "" : " (please add the album link)"}`, html, text);
+  return sendEmail(ph.email, `Paid in full: ${b.ref}${!b.album_url && b.shoot_done ? " (please add the album link)" : ""}`, html, text);
 }
 
 /** A client uploaded a payment receipt: ask every admin to check it, since nothing moves on until they approve. */

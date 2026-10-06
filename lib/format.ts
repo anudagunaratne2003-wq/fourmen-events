@@ -28,8 +28,9 @@ type B = PayState & { shoot_done: boolean };
 export function stageLabel(b: B) {
   if (b.advance_status === "rejected") return "Advance not accepted";
   if (b.advance_status === "pending") return "Advance being checked";
-  if (!b.shoot_done) return "Confirmed";
-  if (fullyPaid(b)) return "Paid · photos available";
+  // Paying in full can now happen before the shoot, so payment state is checked first.
+  if (fullyPaid(b)) return b.shoot_done ? "Paid in full · shoot done" : "Paid in full";
   if (b.balance_status === "pending") return "Balance being checked";
+  if (!b.shoot_done) return "Confirmed";
   return "Balance due";
 }

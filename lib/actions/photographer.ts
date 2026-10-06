@@ -90,7 +90,7 @@ export async function markShootDone(fd: FormData) {
     await notifyPhotosReady(b.id);
   }
   revalidatePath("/photographer");
-  back(!b ? "Advance must be approved first." : nothingDue ? "Shoot marked as done. The package is fully paid, so the client sees the album as soon as you add the link." : "Shoot marked as done. The client can now pay the balance.", String(fd.get("event")));
+  back(!b ? "Advance must be approved first." : nothingDue ? "Shoot marked as done. The package is fully paid, so the client sees the album as soon as you add the link." : "Shoot marked as done. The client can pay the balance from their booking page.", String(fd.get("event")));
 }
 
 /** Accepts only a normal https web address, so nothing like "javascript:" can be stored and shown to a client. */

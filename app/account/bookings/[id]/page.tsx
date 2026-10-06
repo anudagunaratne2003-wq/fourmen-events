@@ -59,7 +59,7 @@ export default async function BookingPage({ params, searchParams }: { params: Pr
         </Step>
         <Step ok={b.shoot_done}>Shoot completed</Step>
         <Step ok={paid}>
-          {paid ? (balance === 0 ? "Paid in full. Nothing more to pay." : "Balance paid") : bal === "pending" ? "Balance payment is being checked" : `Balance of ${lkr(balance)} is due after your shoot`}
+          {paid ? (balance === 0 ? "Paid in full. Nothing more to pay." : "Balance paid") : bal === "pending" ? "Balance payment is being checked" : `Balance of ${lkr(balance)} to pay, before or after your shoot`}
         </Step>
         <Step ok={!!album}>Edited photo album ready</Step>
       </ul>
@@ -84,12 +84,15 @@ export default async function BookingPage({ params, searchParams }: { params: Pr
         </div>
       )}
 
-      {b.shoot_done && !paid && (bal === "none" || bal === "rejected") && (
+      {adv === "approved" && !paid && (bal === "none" || bal === "rejected") && (
         <div className="mt-8 bg-[#1c120c] p-6 text-white">
           <p className="text-[10px] uppercase tracking-[0.3em] text-[#e2b27c]">Pay your balance</p>
           <p className="mt-2 text-3xl font-light tracking-[0.06em] text-[#f0c58f]">{lkr(balance)}</p>
           <p className="mt-1 text-sm text-white/55">Package {lkr(b.package_price)} − advance paid {lkr(b.advance_lkr)}</p>
-          <p className="mt-3 text-sm leading-7 text-white/65">Transfer the balance using the same bank details as your advance, then upload the receipt to unlock your photos.</p>
+          <p className="mt-3 text-sm leading-7 text-white/65">
+            {b.shoot_done ? "Your shoot is done." : "You can pay now or after your shoot, whichever your photographer agreed with you."}{" "}
+            Transfer the balance using the same bank details as your advance, then upload the receipt. Your photo album unlocks once the full amount is confirmed.
+          </p>
           {bal === "rejected" && <p className="mt-3 text-sm text-[#f0c58f]">Your last receipt was not accepted{b.review_note ? `: ${b.review_note}` : ""}. Please upload a clear one.</p>}
           <div className="mt-5 text-black"><BalanceUploader bookingId={b.id} /></div>
         </div>

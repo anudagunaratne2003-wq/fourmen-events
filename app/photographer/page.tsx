@@ -123,8 +123,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                     <div>
                       {!b.shoot_done ? (
                         <form action={markShootDone}><input type="hidden" name="id" value={b.id} /><input type="hidden" name="event" value={sp.event ?? ""} />
-                          <SubmitButton className={btnSmallDark} confirm="Mark this shoot as done?" confirmDetail="The client is then asked to pay the remaining balance.">Mark shoot as done</SubmitButton>
-                          <p className="mt-2 text-xs text-black/50">This lets the client pay the balance.</p></form>
+                          <SubmitButton className={btnSmallDark} confirm="Mark this shoot as done?" confirmDetail="Use this once the shoot has happened. It keeps your bookings list up to date.">Mark shoot as done</SubmitButton>
+                          <p className="mt-2 text-xs text-black/50">{fullyPaid(b) ? "The client has already paid in full." : "The client can pay the balance any time, before or after the shoot."}</p></form>
                       ) : <p className="text-sm text-black/60">Shoot done. {fullyPaid(b) ? "Paid in full. The client can open the album once you add the link." : "Waiting for the client's balance payment."}</p>}
                     </div>
                     <form action={saveAlbumLink} className="grid gap-2">

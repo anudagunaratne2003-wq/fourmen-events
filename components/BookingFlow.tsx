@@ -129,7 +129,7 @@ export default function BookingFlow(p: Props) {
               <div className="mt-4 space-y-1 border-t border-black/10 pt-4">
                 <p className="flex justify-between"><span>Package</span><span>{lkr(pkg!.price)}</span></p>
                 <p className="flex justify-between font-medium text-[#9b5b2b]"><span>Advance due now</span><span>{lkr(pay.advance)}</span></p>
-                <p className="flex justify-between text-black/55"><span>Balance after your shoot (package − advance)</span><span>{lkr(pay.balance)}</span></p>
+                <p className="flex justify-between text-black/55"><span>Balance, pay before or after your shoot (package − advance)</span><span>{lkr(pay.balance)}</span></p>
               </div>
               {p.payment && <p className="mt-4 whitespace-pre-line border-t border-black/10 pt-4 text-black/70">{p.payment}</p>}
             </div>
