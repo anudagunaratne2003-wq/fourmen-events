@@ -8,7 +8,8 @@ import { fmtDate, fmtTime, lkr, splitPayment } from "@/lib/format";
 import { btnDark, input, label as lbl } from "@/lib/ui";
 
 type Pkg = { id: string; name: string; price: number; description: string | null; inclusions: string[] };
-type Slot = { id: string; date: string; start: string };
+/** taken: already booked or not available. Clients are never told which. */
+type Slot = { id: string; date: string; start: string; taken: boolean };
 type Props = {
   eventId: string; photographerId: string; photographerName: string; advance: number;
   payment: string | null; ceremonyNote: string | null; packages: Pkg[]; slots: Slot[];
@@ -20,7 +21,8 @@ export default function BookingFlow(p: Props) {
   const path = usePathname();
   const dates = useMemo(() => [...new Set(p.slots.map((s) => s.date))], [p.slots]);
   const [pkgId, setPkgId] = useState("");
-  const [date, setDate] = useState(dates[0] ?? "");
+  const openOn = (d: string) => p.slots.some((s) => s.date === d && !s.taken);
+  const [date, setDate] = useState(dates.find(openOn) ?? dates[0] ?? "");
   const [slotId, setSlotId] = useState("");
   const [f, setF] = useState({ name: p.user?.name ?? "", phone: p.user?.phone ?? "", email: p.user?.email ?? "", degree: "", notes: "" });
   const [proof, setProof] = useState<Uploaded | null>(null);
@@ -36,12 +38,13 @@ export default function BookingFlow(p: Props) {
       if (s.p !== p.photographerId) return;
       sessionStorage.removeItem("fm-sel");
       if (p.packages.some((x) => x.id === s.pkg)) setPkgId(s.pkg);
-      if (p.slots.some((x) => x.id === s.slot)) { setSlotId(s.slot); setDate(s.date); }
+      if (p.slots.some((x) => x.id === s.slot && !x.taken)) { setSlotId(s.slot); setDate(s.date); }
     } catch { /* ignore */ }
   }, [p.photographerId, p.packages, p.slots]);
 
   const pkg = p.packages.find((x) => x.id === pkgId);
-  const slot = p.slots.find((x) => x.id === slotId);
+  const slot = p.slots.find((x) => x.id === slotId && !x.taken);
+  const anyOpen = p.slots.some((s) => !s.taken);
   const ready = !!pkg && !!slot;
   const pay = splitPayment(pkg?.price ?? 0, p.advance);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
@@ -101,19 +104,27 @@ export default function BookingFlow(p: Props) {
               {dates.map((d) => (
                 <button key={d} onClick={() => { setDate(d); setSlotId(""); }}
                   className={`border px-4 py-2 text-xs uppercase tracking-[0.15em] ${d === date ? "border-black bg-black text-white" : "border-black/20 bg-white hover:border-[#9b5b2b]"}`}>
-                  {fmtDate(d)}
+                  {fmtDate(d)}{!openOn(d) && <span className={`ml-2 text-[9px] ${d === date ? "text-white/70" : "text-black/40"}`}>Fully booked</span>}
                 </button>
               ))}
             </div>
             <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
-              {p.slots.filter((s) => s.date === date).map((s) => (
+              {p.slots.filter((s) => s.date === date).map((s) => s.taken ? (
+                <div key={s.id} aria-label={`${fmtTime(s.start)}, booked`}
+                  className="flex flex-col items-center border border-black/10 bg-[#f3eee7] px-2 py-2 text-sm text-black/35">
+                  <span className="line-through">{fmtTime(s.start)}</span>
+                  <span className="text-[9px] uppercase tracking-[0.15em]">Booked</span>
+                </div>
+              ) : (
                 <button key={s.id} onClick={() => setSlotId(s.id)} aria-pressed={s.id === slotId}
                   className={`border px-2 py-3 text-sm transition ${s.id === slotId ? "border-[#9b5b2b] bg-[#9b5b2b] text-white" : "border-[#9b5b2b]/50 bg-white hover:bg-[#f3eee7]"}`}>
                   {fmtTime(s.start)}
                 </button>
               ))}
             </div>
-            <p className="mt-3 text-xs text-black/45">First come, first served. A time is yours once you send your booking.</p>
+            <p className="mt-3 text-xs text-black/45">
+              {anyOpen ? "First come, first served. A time is yours once you send your booking." : `All of ${p.photographerName}'s times are booked right now. Check back soon, as new times may be added.`}
+            </p>
           </>
         )}
       </div>

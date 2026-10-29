@@ -20,7 +20,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     d.from("photographers").select("id, alias, style").in("id", ids).eq("active", true).not("terms_accepted_at", "is", null).order("alias"),
     d.from("packages").select("photographer_id, price_lkr").in("photographer_id", ids).eq("active", true),
     d.from("portfolio_images").select("photographer_id, path").in("photographer_id", ids).order("created_at", { ascending: false }),
-    d.from("slots").select("photographer_id").eq("event_id", ev.id).eq("status", "open").gte("slot_date", new Date().toISOString().slice(0, 10)),
+    d.from("slots").select("photographer_id, status").eq("event_id", ev.id).gte("slot_date", new Date().toISOString().slice(0, 10)),
   ]);
   const ratings = await ratingSummaries((phs ?? []).map((p) => p.id));
 
@@ -49,7 +49,8 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
             {phs.map((p) => {
               const mine = (pkgs ?? []).filter((k) => k.photographer_id === p.id);
               const pics = (imgs ?? []).filter((i) => i.photographer_id === p.id).slice(0, 3);
-              const open = (slots ?? []).filter((s) => s.photographer_id === p.id).length;
+              const theirs = (slots ?? []).filter((s) => s.photographer_id === p.id);
+              const total = theirs.length, open = theirs.filter((s) => s.status === "open").length;
               return (
                 <Link key={p.id} href={`/graduation/${slug}/${p.id}`} className="group flex flex-col border border-[#dbcfc1] bg-[#f8f4ef] p-5 transition hover:-translate-y-1 hover:border-[#9b5b2b] hover:shadow-xl">
                   <div className="grid grid-cols-3 gap-1">
@@ -67,7 +68,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                   <p className="mt-4 text-sm text-black/65">
                     {mine.length ? `From ${lkr(Math.min(...mine.map((k) => k.price_lkr)))} · ${mine.length} package${mine.length > 1 ? "s" : ""}` : "Packages coming soon"}
                   </p>
-                  <p className="text-xs text-black/45">{open} open time{open === 1 ? "" : "s"}</p>
+                  <p className="text-xs text-black/45">{total === 0 ? "Times coming soon" : open === 0 ? "Fully booked" : `${open} of ${total} times available`}</p>
                   <span className="mt-4 text-[11px] font-semibold uppercase tracking-[0.25em] text-[#9b5b2b]">View portfolio and book</span>
                 </Link>
               );

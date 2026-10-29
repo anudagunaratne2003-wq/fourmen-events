@@ -26,7 +26,9 @@ export default async function PhotographerPage({ params }: { params: Promise<{ s
   const [{ data: imgs }, { data: pkgs }, { data: slots }, user, ratings, reviews] = await Promise.all([
     d.from("portfolio_images").select("path, caption").eq("photographer_id", pid).order("created_at", { ascending: false }),
     d.from("packages").select("*").eq("photographer_id", pid).eq("active", true).order("price_lkr"),
-    d.from("slots").select("id, slot_date, start_time").eq("event_id", ev.id).eq("photographer_id", pid).eq("status", "open").gte("slot_date", today).order("slot_date").order("start_time"),
+    // All times are listed so a busy photographer does not look empty; taken ones (booked or marked
+    // unavailable) are shown as "Booked" and cannot be chosen.
+    d.from("slots").select("id, slot_date, start_time, status").eq("event_id", ev.id).eq("photographer_id", pid).gte("slot_date", today).order("slot_date").order("start_time"),
     getUser(),
     ratingSummaries([pid]),
     recentReviews(pid),
@@ -82,7 +84,7 @@ export default async function PhotographerPage({ params }: { params: Promise<{ s
             eventId={ev.id} photographerId={ph.id} photographerName={name}
             advance={ADVANCE_LKR} payment={ev.payment_instructions} ceremonyNote={ev.ceremony_note}
             packages={(pkgs ?? []).map((k) => ({ id: k.id, name: k.name, price: k.price_lkr, description: k.description, inclusions: k.inclusions }))}
-            slots={(slots ?? []).map((s) => ({ id: s.id, date: s.slot_date, start: s.start_time }))}
+            slots={(slots ?? []).map((s) => ({ id: s.id, date: s.slot_date, start: s.start_time, taken: s.status !== "open" }))}
             user={user && user.role === "client" ? { name: user.name, email: user.email, phone: user.phone ?? "" } : null}
           />}
           {user && user.role !== "client" && <p className="mt-6 text-sm text-black/55">You are signed in as {user.role}. Sign in with a client account to book.</p>}

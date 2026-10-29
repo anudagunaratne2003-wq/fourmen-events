@@ -124,7 +124,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                     <div className="divide-y divide-black/10 bg-white">
                       {slots!.filter((s) => s.slot_date === dt).map((s) => (
                         <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
-                          <span>{fmtTime(s.start_time)} <span className="text-black/40">· {s.status === "booked" ? "Booked by a client" : s.status === "blocked" ? "Marked unavailable" : "Open"}</span></span>
+                          <span>{fmtTime(s.start_time)} <span className="text-black/40">· {s.status === "booked" ? "Booked by a client" : s.status === "blocked" ? "Marked unavailable (clients see it as booked)" : "Open"}</span></span>
                           {s.status !== "booked" && (
                             <span className="flex gap-2">
                               <form action={setSlotStatus}><input type="hidden" name="id" value={s.id} /><input type="hidden" name="event" value={ev.id} /><input type="hidden" name="status" value={s.status === "open" ? "blocked" : "open"} /><SubmitButton className={btnSmall}>{s.status === "open" ? "Mark unavailable" : "Reopen"}</SubmitButton></form>
