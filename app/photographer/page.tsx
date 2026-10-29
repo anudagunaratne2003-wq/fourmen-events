@@ -9,7 +9,7 @@ import { joinEvent, leaveEvent, createSlots, setSlotStatus, deleteSlot, markShoo
 import { btnSmall, btnSmallDark, h2, input, label } from "@/lib/ui";
 import SubmitButton from "@/components/SubmitButton";
 import BankFields from "@/components/BankFields";
-import PackagePriceField from "@/components/PackagePriceField";
+import PackageForm from "@/components/PackageForm";
 import Stars from "@/components/Stars";
 import { ratingSummaries, recentReviews } from "@/lib/reviews";
 import TermsDocument from "@/components/TermsDocument";
@@ -236,13 +236,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             <details key={k.id} className={box}>
               <summary className="cursor-pointer text-lg font-light uppercase tracking-[0.1em]">{k.name} <span className="text-[#9b5b2b]">· {lkr(k.price_lkr)}</span>
                 <span className="block text-xs normal-case tracking-normal text-black/50">You receive {lkr(k.base_price_lkr ?? Math.max(k.price_lkr - SERVICE_FEE_LKR, 0))} · clients see {lkr(k.price_lkr)} (incl. {lkr(SERVICE_FEE_LKR)} Fourmen fee)</span></summary>
-              <PackageForm k={k} />
+              <PackageForm k={k} action={savePackage} />
               <form action={deletePackage} className="mt-3"><input type="hidden" name="id" value={k.id} /><SubmitButton className={btnSmall} danger confirm={`Delete the ${k.name} package?`} confirmDetail="Students will no longer be able to choose it. Existing bookings keep their package.">Delete package</SubmitButton></form>
             </details>
           ))}
           <details className={box} open={!pkgs?.length}>
             <summary className="cursor-pointer text-lg font-light uppercase tracking-[0.1em]">+ New package</summary>
-            <PackageForm />
+            <PackageForm action={savePackage} />
           </details>
         </div>
       </section>
@@ -263,18 +263,5 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </div>
       </section>
     </main>
-  );
-}
-
-function PackageForm({ k }: { k?: { id: string; name: string; price_lkr: number; base_price_lkr: number | null; description: string | null; inclusions: string[] } }) {
-  return (
-    <form action={savePackage} className="mt-4 grid gap-3">
-      {k && <input type="hidden" name="id" value={k.id} />}
-      <div><label className={label}>Name</label><input name="name" required defaultValue={k?.name} className={input} placeholder="e.g. Solo Portrait" /></div>
-      <PackagePriceField base={k ? (k.base_price_lkr ?? Math.max(k.price_lkr - SERVICE_FEE_LKR, 0)) : null} idPrefix={k?.id ?? "new"} />
-      <div><label className={label}>Short description</label><input name="description" defaultValue={k?.description ?? ""} className={input} /></div>
-      <div><label className={label}>What is included (one per line)</label><textarea name="inclusions" rows={5} defaultValue={k?.inclusions.join("\n")} className={input} placeholder={"30-minute session\n25 edited photos\nOnline gallery"} /></div>
-      <SubmitButton className={btnSmallDark}>Save package</SubmitButton>
-    </form>
   );
 }

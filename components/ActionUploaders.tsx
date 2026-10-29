@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 import Uploader from "@/components/Uploader";
 import { submitBalance } from "@/lib/actions/booking";
 import { registerPortfolioImage } from "@/lib/actions/photographer";
+import { registerPortfolioImageAdmin } from "@/lib/actions/admin";
 import { useState } from "react";
 
 export function BalanceUploader({ bookingId }: { bookingId: string }) {
@@ -22,6 +23,16 @@ export function PortfolioUploader() {
   return (
     <Uploader kind="portfolio" multiple parallel={3} accept="image/*" maxMB={15} label="Add portfolio photos"
       onEach={async (f) => (await registerPortfolioImage(f.path)).error}
+      onUploaded={() => router.refresh()} />
+  );
+}
+
+/** Admin "Manage profile" page: add photos to a photographer's portfolio on their behalf. */
+export function AdminPortfolioUploader({ photographerId }: { photographerId: string }) {
+  const router = useRouter();
+  return (
+    <Uploader kind="portfolio" photographerId={photographerId} multiple parallel={3} accept="image/*" maxMB={15} label="Add portfolio photos"
+      onEach={async (f) => (await registerPortfolioImageAdmin(photographerId, f.path)).error}
       onUploaded={() => router.refresh()} />
   );
 }

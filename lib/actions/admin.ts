@@ -7,6 +7,7 @@ import { notifyPhotosReady, notifyPhotographerBooked, notifyPhotographerPaidInFu
 import { STATUS, isStatus } from "@/lib/events";
 import { lkr, splitPayment, fullyPaid, ADVANCE_LKR } from "@/lib/format";
 import { parseBankForm, saveBankAccount } from "@/lib/bank";
+import { parsePackageForm, savePackageFor, deletePackageFor, addPortfolioImageFor, deletePortfolioImageFor } from "@/lib/profile";
 
 // "t" makes every message unique, so the same result twice in a row still shows a toast.
 const back = (path: string, msg: string): never => redirect(`${path}?msg=${encodeURIComponent(msg)}&t=${Date.now()}`);
@@ -303,12 +304,14 @@ export async function saveBankDetailsAdmin(fd: FormData) {
   const id = String(fd.get("photographer_id"));
   const { data: ph } = await db().from("photographers").select("id, display_name").eq("id", id).maybeSingle();
   if (!ph) return back("/admin/photographers", "Photographer not found.");
+  // Saved from the "Manage profile" page? Return there.
+  const to = String(fd.get("return") || "") === "manage" ? `/admin/photographers/${ph.id}` : "/admin/photographers";
   const parsed = parseBankForm(fd);
-  if ("error" in parsed) return back("/admin/photographers", `${ph.display_name}: ${parsed.error}`);
+  if ("error" in parsed) return back(to, `${ph.display_name}: ${parsed.error}`);
   const r = await saveBankAccount(ph.id, parsed.row, admin.id, true);
-  if ("error" in r) return back("/admin/photographers", r.error!);
-  revalidatePath("/admin/photographers");
-  back("/admin/photographers", r.changed ? `${ph.display_name}: payout details saved and the photographer was notified.` : `${ph.display_name}: no changes to save.`);
+  if ("error" in r) return back(to, r.error!);
+  revalidatePath("/admin/photographers"); revalidatePath(`/admin/photographers/${ph.id}`);
+  back(to, r.changed ? `${ph.display_name}: payout details saved and the photographer was notified.` : `${ph.display_name}: no changes to save.`);
 }
 
 /** Hide an abusive or irrelevant review (or show it again). Hidden reviews do not count towards the rating. */
@@ -320,4 +323,65 @@ export async function setReviewHidden(fd: FormData) {
   await db().from("audit_log").insert({ actor_id: admin.id, action: hidden ? "review_hidden" : "review_shown", detail: { review_id: id } });
   revalidatePath("/admin/photographers"); revalidatePath("/graduation", "layout");
   back("/admin/photographers", hidden ? "Review hidden. It no longer counts towards the rating." : "Review is visible again.");
+}
+
+// ---------- Manage a photographer's profile on their behalf ----------
+const managePath = (id: string) => `/admin/photographers/${id}`;
+async function managedPhotographer(fd: FormData) {
+  const admin = await requireRole("admin");
+  const id = String(fd.get("photographer_id"));
+  const { data: ph } = await db().from("photographers").select("id, display_name").eq("id", id).maybeSingle();
+  if (!ph) return back("/admin/photographers", "Photographer not found.");
+  return { admin, ph };
+}
+const refreshProfile = (id: string) => { revalidatePath(managePath(id)); revalidatePath("/admin/photographers"); revalidatePath("/graduation", "layout"); };
+
+export async function updatePhotographerProfile(fd: FormData) {
+  const { admin, ph } = await managedPhotographer(fd);
+  const name = String(fd.get("display_name") || "").trim().slice(0, 80);
+  if (!name) return back(managePath(ph.id), "The photographer's name is required.");
+  const row = {
+    display_name: name,
+    alias: String(fd.get("alias") || "").trim().slice(0, 60) || null,
+    style: String(fd.get("style") || "").trim().slice(0, 120) || null,
+    bio: String(fd.get("bio") || "").trim().slice(0, 1000) || null,
+    contact_phone: String(fd.get("contact_phone") || "").trim().slice(0, 40) || null,
+  };
+  const { error } = await db().from("photographers").update(row).eq("id", ph.id);
+  if (error) return back(managePath(ph.id), error.code === "23505" ? "That stage name is already used." : "Could not save the profile.");
+  await db().from("audit_log").insert({ actor_id: admin.id, action: "photographer_profile_edited_by_admin", detail: { photographer_id: ph.id } });
+  refreshProfile(ph.id);
+  back(managePath(ph.id), "Profile details saved.");
+}
+
+export async function savePackageAdmin(fd: FormData) {
+  const { admin, ph } = await managedPhotographer(fd);
+  const parsed = parsePackageForm(fd);
+  if ("error" in parsed) return back(managePath(ph.id), parsed.error);
+  const r = await savePackageFor(ph.id, String(fd.get("id") || "") || null, parsed.row);
+  if (r.error) return back(managePath(ph.id), r.error);
+  await db().from("audit_log").insert({ actor_id: admin.id, action: "package_saved_by_admin", detail: { photographer_id: ph.id, name: parsed.row.name, price: parsed.row.price_lkr } });
+  refreshProfile(ph.id);
+  back(managePath(ph.id), `Package saved: clients see LKR ${parsed.row.price_lkr.toLocaleString("en-US")}, ${ph.display_name} receives LKR ${parsed.row.base_price_lkr.toLocaleString("en-US")}.`);
+}
+
+export async function deletePackageAdmin(fd: FormData) {
+  const { ph } = await managedPhotographer(fd);
+  await deletePackageFor(ph.id, String(fd.get("id")));
+  refreshProfile(ph.id);
+  back(managePath(ph.id), "Package removed.");
+}
+
+export async function registerPortfolioImageAdmin(photographerId: string, path: string) {
+  await requireRole("admin");
+  const r = await addPortfolioImageFor(photographerId, path);
+  refreshProfile(photographerId);
+  return r;
+}
+
+export async function deletePortfolioImageAdmin(fd: FormData) {
+  const { ph } = await managedPhotographer(fd);
+  await deletePortfolioImageFor(ph.id, String(fd.get("id")));
+  refreshProfile(ph.id);
+  back(managePath(ph.id), "Photo removed.");
 }

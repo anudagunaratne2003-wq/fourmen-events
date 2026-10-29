@@ -7,7 +7,9 @@ import { prepareUpload, type UploadKind } from "@/lib/actions/uploads";
 export type Uploaded = { path: string; name: string; mime: string; size: number };
 
 type Props = {
-  kind: UploadKind; accept: string; multiple?: boolean; maxMB: number;
+  kind: UploadKind; accept: string;
+  /** Admins only: upload into this photographer's portfolio. */
+  photographerId?: string; multiple?: boolean; maxMB: number;
   label: string;
   /** How many files upload at the same time. */
   parallel?: number;
@@ -18,7 +20,7 @@ type Props = {
 };
 
 /** Sends files straight from the browser to storage using a one-time signed link. */
-export default function Uploader({ kind, accept, multiple, maxMB, label, parallel = 1, onEach, onUploaded }: Props) {
+export default function Uploader({ kind, photographerId, accept, multiple, maxMB, label, parallel = 1, onEach, onUploaded }: Props) {
   const ref = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
@@ -26,7 +28,7 @@ export default function Uploader({ kind, accept, multiple, maxMB, label, paralle
 
   async function uploadOne(f: File): Promise<Uploaded> {
     if (f.size > maxMB * 1024 * 1024) throw new Error(`${f.name}: larger than ${maxMB} MB.`);
-    const t = await prepareUpload({ kind, fileName: f.name });
+    const t = await prepareUpload({ kind, fileName: f.name, photographerId });
     if ("error" in t && t.error) throw new Error(`${f.name}: ${t.error}`);
     const { error } = await browserClient().storage.from(t.bucket!).uploadToSignedUrl(t.path!, t.token!, f, { contentType: f.type || undefined });
     if (error) {

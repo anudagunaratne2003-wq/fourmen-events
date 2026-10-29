@@ -10,7 +10,7 @@ const clean = (n: string) => n.replace(/[^\w.\-]+/g, "_").slice(-80);
 
 /** Checks the caller is allowed to upload, then returns a one-time signed upload target.
  *  The browser sends the file straight to storage, so files never pass through our server. */
-export async function prepareUpload(input: { kind: UploadKind; fileName: string }) {
+export async function prepareUpload(input: { kind: UploadKind; fileName: string; photographerId?: string }) {
   const user = await getUser();
   if (!user) return { error: "Please sign in first." };
   if (!(input.kind in BUCKET)) return { error: "Uploads of this kind are not supported." };
@@ -20,6 +20,11 @@ export async function prepareUpload(input: { kind: UploadKind; fileName: string 
 
   if (input.kind === "proof") {
     path = `${user.id}/${id}-${clean(input.fileName)}`;
+  } else if (user.role === "admin" && input.photographerId) {
+    // Admins can build a photographer's portfolio for them (Manage profile page).
+    const { data: ph } = await d.from("photographers").select("id").eq("id", input.photographerId).maybeSingle();
+    if (!ph) return { error: "Photographer not found." };
+    path = `${ph.id}/${id}-${clean(input.fileName)}`;
   } else {
     const p = user.role === "photographer" ? await getPhotographer(user) : null;
     if (!p) return { error: "Only photographers can add portfolio photos." };

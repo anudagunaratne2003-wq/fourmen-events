@@ -6,7 +6,8 @@ import { requireRole, getPhotographer } from "@/lib/auth";
 import { db } from "@/lib/supabase/admin";
 import { notifyPhotosReady } from "@/lib/email";
 import { parseBankForm, saveBankAccount } from "@/lib/bank";
-import { balanceOf, SERVICE_FEE_LKR } from "@/lib/format";
+import { balanceOf } from "@/lib/format";
+import { parsePackageForm, savePackageFor, deletePackageFor, addPortfolioImageFor, deletePortfolioImageFor } from "@/lib/profile";
 import { TERMS, termsHash, termsText } from "@/lib/terms";
 
 const back = (msg: string, event?: string): never =>
@@ -150,41 +151,31 @@ export async function saveAlbumLink(fd: FormData) {
 
 export async function savePackage(fd: FormData) {
   const p = await me();
-  const id = String(fd.get("id") || ""), name = String(fd.get("name")).trim();
-  // The photographer enters their own price; the Fourmen fee is always added here, on the server.
-  const base = Math.round(Number(fd.get("base_price")));
-  if (!name || !(base >= 0)) return back("Give the package a name and your price.");
-  const row = {
-    photographer_id: p.id, name, base_price_lkr: base, price_lkr: base + SERVICE_FEE_LKR, description: String(fd.get("description") || "").trim() || null,
-    inclusions: String(fd.get("inclusions") || "").split("\n").map((s) => s.trim()).filter(Boolean),
-  };
-  const d = db();
-  if (id) await d.from("packages").update(row).eq("id", id).eq("photographer_id", p.id);
-  else await d.from("packages").insert(row);
+  const parsed = parsePackageForm(fd);
+  if ("error" in parsed) return back(parsed.error);
+  const r = await savePackageFor(p.id, String(fd.get("id") || "") || null, parsed.row);
+  if (r.error) return back(r.error);
   revalidatePath("/photographer");
-  back(`Package saved. Clients see LKR ${(base + SERVICE_FEE_LKR).toLocaleString("en-US")} and you receive LKR ${base.toLocaleString("en-US")}.`);
+  back(`Package saved. Clients see LKR ${parsed.row.price_lkr.toLocaleString("en-US")} and you receive LKR ${parsed.row.base_price_lkr.toLocaleString("en-US")}.`);
 }
 
 export async function deletePackage(fd: FormData) {
   const p = await me();
-  await db().from("packages").delete().eq("id", String(fd.get("id"))).eq("photographer_id", p.id);
+  await deletePackageFor(p.id, String(fd.get("id")));
   revalidatePath("/photographer");
   back("Package removed.");
 }
 
 export async function registerPortfolioImage(path: string) {
   const p = await me();
-  if (!path.startsWith(p.id + "/")) return { error: "Invalid file." };
-  await db().from("portfolio_images").insert({ photographer_id: p.id, path });
+  const r = await addPortfolioImageFor(p.id, path);
   revalidatePath("/photographer");
-  return {};
+  return r;
 }
 
 export async function deletePortfolioImage(fd: FormData) {
   const p = await me();
-  const d = db();
-  const { data: img } = await d.from("portfolio_images").select("id, path").eq("id", String(fd.get("id"))).eq("photographer_id", p.id).maybeSingle();
-  if (img) { await d.storage.from("portfolio").remove([img.path]); await d.from("portfolio_images").delete().eq("id", img.id); }
+  await deletePortfolioImageFor(p.id, String(fd.get("id")));
   revalidatePath("/photographer");
   back("Photo removed.");
 }

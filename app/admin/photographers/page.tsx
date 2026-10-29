@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { db } from "@/lib/supabase/admin";
 import { createPhotographer, togglePhotographer, reviewApplication, setPhotographerAlias, saveBankDetailsAdmin, setReviewHidden } from "@/lib/actions/admin";
 import { publicName } from "@/lib/reveal";
@@ -73,7 +74,8 @@ export default async function PhotographersAdmin() {
           return (
           <div key={p.id} className="px-5 py-4 text-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><p className="font-medium">{p.display_name} {!p.active && <span className="text-black/40">(hidden)</span>}</p>
+            <div><p className="font-medium">{p.display_name} {!p.active && <span className="text-black/40">(hidden)</span>}
+                <Link href={`/admin/photographers/${p.id}`} className="ml-2 text-xs font-normal text-[#9b5b2b] underline">Manage profile →</Link></p>
               <p className="text-black/55">{p.email}{p.contact_phone ? ` · ${p.contact_phone}` : ""} · {p.user_id ? "has signed in" : "not signed in yet"}</p>
               <p className="text-black/55">Clients see: <b className="font-medium text-[#9b5b2b]">{publicName(p)}</b>{!p.alias && " (auto, set a stage name)"}</p>
               <p className={`text-xs ${p.terms_version === TERMS.version ? "text-green-700" : "text-amber-700"}`}>
